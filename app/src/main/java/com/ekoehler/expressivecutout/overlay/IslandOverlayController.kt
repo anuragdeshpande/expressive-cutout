@@ -184,6 +184,13 @@ class IslandOverlayController(private val context: Context) {
 
     private val currentEvent = MutableStateFlow<IslandEvent?>(null)
 
+    /** Stack of active notification previews when multiple previews are concurrently shown. */
+    private val previewStack = MutableStateFlow<List<IslandEvent>>(emptyList())
+    private val notificationPreviewPreferences by lazy {
+        com.ekoehler.expressivecutout.data.NotificationPreviewPreferences(context)
+    }
+    private var previewSettings = com.ekoehler.expressivecutout.data.NotificationPreviewSettings()
+
     /**
      * The event parked in the satellite bubble beside the pill, or null when the island is whole.
      * Holds whatever [currentEvent] displaced, so a pinned live tile stays visible instead of
@@ -378,6 +385,11 @@ class IslandOverlayController(private val context: Context) {
         observeSignals()
         observeVisibility()
         observeMirroredKey()
+        observeNotificationPreviewSettings()
+    }
+
+    private fun observeNotificationPreviewSettings() = scope.launch {
+        notificationPreviewPreferences.settings.collect { previewSettings = it }
     }
 
     /**
@@ -386,6 +398,8 @@ class IslandOverlayController(private val context: Context) {
      */
     fun stop() {
         satelliteDismissJob?.cancel()
+        previewStack.value = emptyList()
+        IslandPreviewBus.updateActivePreviewCount(0)
         // The island is going away with a pill still up, so nothing is left to mirror the
         // notification it was standing in for — hand it back to the panel before the collector that
         // would normally notice dies with the scope.
@@ -439,6 +453,8 @@ class IslandOverlayController(private val context: Context) {
                     savedEventBeforeHide = currentEvent.value
                 }
                 currentEvent.value = null
+                previewStack.value = emptyList()
+                IslandPreviewBus.updateActivePreviewCount(0)
                 removeOverlay()
             }
 
@@ -497,8 +513,9 @@ class IslandOverlayController(private val context: Context) {
                 dismissJob?.cancel()
                 forcedExpanded.value = previewExpanded
                 expanded = previewExpanded ?: false
-                currentEvent.value = previewEvent
-                setTouchable(currentEvent.value != null || (behaviourState.value.showsWhenEmpty && behaviourState.value.cutoutEnabled))
+                currentEvent.value = if (previewStack.value.isNotEmpty()) previewStack.value.first() else previewEvent
+                val allowsTouch = !previewPinned || currentEvent.value?.preview != null || previewStack.value.isNotEmpty()
+                setTouchable(allowsTouch && (currentEvent.value != null || (behaviourState.value.showsWhenEmpty && behaviourState.value.cutoutEnabled)))
             }
             callActive && lastCallEvent != null -> {
                 dismissJob?.cancel()
@@ -638,6 +655,7 @@ class IslandOverlayController(private val context: Context) {
                 val collapse by collapseTrigger.collectAsStateWithLifecycle()
                 val event by currentEvent.collectAsStateWithLifecycle()
                 val satellite by satelliteEvent.collectAsStateWithLifecycle()
+                val activePreviewStack by previewStack.collectAsStateWithLifecycle()
                 val layout by layoutState.collectAsStateWithLifecycle()
                 val forced by forcedExpanded.collectAsStateWithLifecycle()
                 val behaviour by behaviourState.collectAsStateWithLifecycle()
@@ -706,6 +724,8 @@ class IslandOverlayController(private val context: Context) {
                         onSatelliteClick = ::onSatellitePromote,
                         onEmptyClick = ::onEmptyClick,
                         onCenterShortcut = ::onCenterShortcut,
+                        previewStack = activePreviewStack,
+                        onFlickNext = ::onFlickNextPreview,
                         onExpandedChange = ::onExpandedChanged,
                         onActivate = ::onActivate,
                         onAction = ::onAction,
@@ -1122,8 +1142,10 @@ class IslandOverlayController(private val context: Context) {
      */
     private fun observeVisibility() = scope.launch {
         combine(currentEvent, behaviourState, ::Pair).collect { (event, behaviour) ->
+            val allowsTouch = !previewPinned || event?.preview != null || previewStack.value.isNotEmpty()
+            Log.d(TAG, "observeVisibility: event=${event?.label}, previewPinned=$previewPinned, preview=${event?.preview != null}, allowsTouch=$allowsTouch")
             setTouchable(
-                !previewPinned && (event != null || satelliteEvent.value != null ||
+                allowsTouch && (event != null || satelliteEvent.value != null ||
                     (behaviour.showsWhenEmpty && behaviour.cutoutEnabled)),
             )
         }
@@ -1225,6 +1247,7 @@ class IslandOverlayController(private val context: Context) {
         val params = layoutParams ?: return
         val flag = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
         val newFlags = if (touchable) params.flags and flag.inv() else params.flags or flag
+        Log.d(TAG, "setTouchable called: touchable=$touchable, prevFlags=${params.flags}, newFlags=$newFlags")
         if (newFlags != params.flags) {
             params.flags = newFlags
             runCatching { windowManager.updateViewLayout(view, params) }
@@ -1346,7 +1369,8 @@ class IslandOverlayController(private val context: Context) {
         val centerX = viewWidth / 2 + (dims.offsetXDp * density).toInt() + dotBonusPx / 2 +
             satelliteShiftPx(splitPx)
         val topPx = (dims.offsetYDp * density).toInt()
-        val bottomPx = ((dims.offsetYDp + dims.heightDp + bonusDp) * density).toInt()
+        val stackBonus = if (previewStack.value.size > 1) PREVIEW_STACK_HEIGHT_BONUS_DP else 0
+        val bottomPx = ((dims.offsetYDp + dims.heightDp + bonusDp + stackBonus) * density).toInt()
         return Rect(
             (centerX - pillWidthPx / 2 - margin).coerceAtLeast(0),
             (topPx - margin).coerceAtLeast(0),
@@ -1382,7 +1406,8 @@ class IslandOverlayController(private val context: Context) {
             return ((islandLengthDp + TOUCH_MARGIN_DP * 2) * density).toInt()
         }
         val bonus = currentHeightBonusDp(expanded)
-        return ((dims.offsetYDp + dims.heightDp + bonus + WINDOW_MARGIN_DP) * density).toInt()
+        val stackBonus = if (previewStack.value.size > 1) PREVIEW_STACK_HEIGHT_BONUS_DP else 0
+        return ((dims.offsetYDp + dims.heightDp + bonus + stackBonus + WINDOW_MARGIN_DP) * density).toInt()
     }
 
     /** Wide enough for whichever state is widest — used for the initial, safe window size. */
@@ -1717,6 +1742,34 @@ class IslandOverlayController(private val context: Context) {
                     )
                 }
             }
+            event?.preview != null -> {
+                val preview = event.preview
+                val appLabel = event.appName ?: preview.contextTag ?: "Notification"
+                val compactTime = NotificationHeaderResolver.formatCompactRelativeTime(
+                    event.postTimeMs ?: System.currentTimeMillis()
+                )
+                val header = "$appLabel • $compactTime"
+                val widthPct = previewCutoutWidthPercent(
+                    appName = appLabel,
+                    headerText = header,
+                    summaryText = preview.summary,
+                    actionLabel = preview.primaryAction?.label,
+                    stackCount = previewStack.value.size,
+                    isMasked = event.isContentMasked || preview.isContentMasked,
+                    displayWidthDp = displayWidthDp.value,
+                    density = density,
+                    minWidthPercent = layout.collapsed.widthPercent,
+                    maxWidthPercent = maxOf(layout.expanded.widthPercent, 88),
+                )
+                layout.collapsed.copy(
+                    widthPercent = widthPct,
+                    heightDp = 56,
+                    cornerTopLeftDp = 28,
+                    cornerTopRightDp = 28,
+                    cornerBottomLeftDp = 28,
+                    cornerBottomRightDp = 28,
+                )
+            }
             else -> layout.collapsed
         }
     }
@@ -1751,6 +1804,13 @@ class IslandOverlayController(private val context: Context) {
                 }
             }
             isTwoRowCall() -> callIncomingExtraDp()
+            !expanded && event?.preview != null -> {
+                when {
+                    previewStack.value.size > 2 -> 14
+                    previewStack.value.size > 1 -> 8
+                    else -> 0
+                }
+            }
             else -> 0
         }
     }
@@ -1784,15 +1844,37 @@ class IslandOverlayController(private val context: Context) {
         return controlsExtra + progressExtra
     }
 
+    /**
+     * Cycles the notification preview stack: shifts the top card to the back of the deck and
+     * brings the next card to the front, re-arming its auto-dismiss deadline.
+     */
+    private fun onFlickNextPreview() {
+        val current = previewStack.value
+        if (current.size <= 1) return
+        val rotated = current.drop(1) + current.first()
+        previewStack.value = rotated
+        IslandPreviewBus.updateActivePreviewCount(rotated.size)
+        currentEvent.value = rotated.first()
+        IslandPreviewBus.notifyRotated()
+        scheduleDismiss()
+        syncWindowSize()
+    }
+
     /** While pinned (settings open), keep a persistent preview matching the tab being edited. */
     private fun observePreviewPin() = scope.launch {
         combine(
             IslandPreviewBus.active,
             IslandPreviewBus.expandedPreview,
             IslandPreviewBus.previewSignal,
-        ) { pinned, expandedTab, previewSig ->
-            Triple(pinned, expandedTab, previewSig)
-        }.collect { (pinned, expandedTab, previewSig) ->
+            IslandPreviewBus.previewStackSignals,
+        ) { pinned, expandedTab, previewSig, previewStackSigs ->
+            PreviewPinConfig(pinned, expandedTab, previewSig, previewStackSigs)
+        }.collect { config ->
+            val pinned = config.pinned
+            val expandedTab = config.expandedTab
+            val previewSig = config.previewSig
+            val previewStackSigs = config.previewStackSigs
+            Log.d(TAG, "observePreviewPin: pinned=$pinned, previewStackSigs=${previewStackSigs.size}, previewSig=${previewSig?.javaClass?.simpleName}")
             previewPinned = pinned
             previewExpanded = expandedTab
             val isNoExpandLandscape = currentOrientation == Configuration.ORIENTATION_LANDSCAPE &&
@@ -1803,33 +1885,64 @@ class IslandOverlayController(private val context: Context) {
                 dismissJob?.cancel()
                 forcedExpanded.value = targetExpanded
                 expanded = targetExpanded ?: false
-                val eventToShow = if (previewSig != null) {
-                    resolver.resolve(
-                        signal = previewSig,
-                        customIcons = customIcons,
-                        musicSettings = musicSettings,
-                        phoneSettings = phoneSettings,
-                        timerSettings = timerSettings,
-                        assistantSettings = assistantSettings,
-                        volumeSettings = volumeSettings,
-                        dynamicEventColor = eventDynamicColor,
-                        dynamicEventColorRole = eventDynamicColorRole,
-                        dynamicEventColorOpacity = eventDynamicColorOpacity,
-                        animatedIconEnabled = eventAnimatedIcons,
-                        animatedIconLoop = eventAnimatedIconLoops,
-                        eventColorOverrides = eventColors,
-                        preferDynamicIconColor = appearanceState.value.preferDynamicIconColor,
-                    ).copy(initiallyExpanded = targetExpanded ?: false)
+                if (previewStackSigs.isNotEmpty()) {
+                    val resolvedStack = previewStackSigs.map { sig ->
+                        resolver.resolve(
+                            signal = sig,
+                            customIcons = customIcons,
+                            musicSettings = musicSettings,
+                            phoneSettings = phoneSettings,
+                            timerSettings = timerSettings,
+                            assistantSettings = assistantSettings,
+                            volumeSettings = volumeSettings,
+                            dynamicEventColor = eventDynamicColor,
+                            dynamicEventColorRole = eventDynamicColorRole,
+                            dynamicEventColorOpacity = eventDynamicColorOpacity,
+                            animatedIconEnabled = eventAnimatedIcons,
+                            animatedIconLoop = eventAnimatedIconLoops,
+                            eventColorOverrides = eventColors,
+                            preferDynamicIconColor = appearanceState.value.preferDynamicIconColor,
+                        ).copy(initiallyExpanded = targetExpanded ?: false)
+                    }
+                    previewStack.value = resolvedStack
+                    IslandPreviewBus.updateActivePreviewCount(resolvedStack.size)
+                    currentEvent.value = resolvedStack.first()
                 } else {
-                    previewEvent
+                    val eventToShow = if (previewSig != null) {
+                        resolver.resolve(
+                            signal = previewSig,
+                            customIcons = customIcons,
+                            musicSettings = musicSettings,
+                            phoneSettings = phoneSettings,
+                            timerSettings = timerSettings,
+                            assistantSettings = assistantSettings,
+                            volumeSettings = volumeSettings,
+                            dynamicEventColor = eventDynamicColor,
+                            dynamicEventColorRole = eventDynamicColorRole,
+                            dynamicEventColorOpacity = eventDynamicColorOpacity,
+                            animatedIconEnabled = eventAnimatedIcons,
+                            animatedIconLoop = eventAnimatedIconLoops,
+                            eventColorOverrides = eventColors,
+                            preferDynamicIconColor = appearanceState.value.preferDynamicIconColor,
+                        ).copy(initiallyExpanded = targetExpanded ?: false)
+                    } else {
+                        previewEvent
+                    }
+                    previewStack.value = emptyList()
+                    IslandPreviewBus.updateActivePreviewCount(0)
+                    currentEvent.value = eventToShow
                 }
-                currentEvent.value = eventToShow
             } else {
                 forcedExpanded.value = if (isNoExpandLandscape) false else null
                 expanded = false
                 currentEvent.value = null
+                previewStack.value = emptyList()
+                IslandPreviewBus.updateActivePreviewCount(0)
             }
-            setTouchable(currentEvent.value != null || (behaviourState.value.showsWhenEmpty && behaviourState.value.cutoutEnabled))
+            val allowsTouch = !pinned || currentEvent.value?.preview != null || previewStack.value.isNotEmpty()
+            setTouchable(
+                allowsTouch && (currentEvent.value != null || (behaviourState.value.showsWhenEmpty && behaviourState.value.cutoutEnabled)),
+            )
             syncWindowSize()
         }
     }
@@ -2016,6 +2129,30 @@ class IslandOverlayController(private val context: Context) {
                 return@collect
             }
 
+            if (resolvedEvent.preview != null) {
+                val existingStack = previewStack.value
+                val baseList = if (existingStack.isEmpty() && currentEvent.value?.preview != null) {
+                    listOf(currentEvent.value!!)
+                } else {
+                    existingStack
+                }
+                val filtered = baseList.filterNot {
+                    it.notificationKey != null && it.notificationKey == resolvedEvent.notificationKey
+                }
+                val updatedStack = (listOf(resolvedEvent) + filtered).take(previewSettings.maxStackSize)
+                previewStack.value = updatedStack
+                IslandPreviewBus.updateActivePreviewCount(updatedStack.size)
+                forcedExpanded.value = null
+                expanded = false
+                currentEvent.value = resolvedEvent
+                syncWindowSize()
+                scheduleDismiss()
+                return@collect
+            } else if (previewStack.value.isNotEmpty()) {
+                previewStack.value = emptyList()
+                IslandPreviewBus.updateActivePreviewCount(0)
+            }
+
             // Park whatever the pill is losing in the bubble, carrying its own deadline over, so a
             // pinned live tile stays visible rather than disappearing until livePillToReturnTo
             // brings it back. Cleared straight after: scheduleDismiss re-arms it below for a
@@ -2194,7 +2331,19 @@ class IslandOverlayController(private val context: Context) {
             return
         }
         event?.notificationKey?.let { CutoutNotificationListenerService.settle(it) }
-        dismissIsland()
+        val current = previewStack.value
+        if (current.size > 1) {
+            val remaining = current.drop(1)
+            previewStack.value = remaining
+            IslandPreviewBus.updateActivePreviewCount(remaining.size)
+            currentEvent.value = remaining.first()
+            syncWindowSize()
+            scheduleDismiss()
+        } else {
+            previewStack.value = emptyList()
+            IslandPreviewBus.updateActivePreviewCount(0)
+            dismissIsland()
+        }
         if (intent != null) {
             sendPendingIntent(intent)
         } else if (action != null) {
@@ -2214,7 +2363,19 @@ class IslandOverlayController(private val context: Context) {
      */
     private fun onDismiss() {
         currentEvent.value?.notificationKey?.let { CutoutNotificationListenerService.dismiss(it) }
-        dismissIsland()
+        val current = previewStack.value
+        if (current.size > 1) {
+            val remaining = current.drop(1)
+            previewStack.value = remaining
+            IslandPreviewBus.updateActivePreviewCount(remaining.size)
+            currentEvent.value = remaining.first()
+            syncWindowSize()
+            scheduleDismiss()
+        } else {
+            previewStack.value = emptyList()
+            IslandPreviewBus.updateActivePreviewCount(0)
+            dismissIsland()
+        }
     }
 
     /** Fire one of the notification's action buttons, then dismiss the island. */
@@ -2229,7 +2390,19 @@ class IslandOverlayController(private val context: Context) {
             return
         }
         currentEvent.value?.notificationKey?.let { CutoutNotificationListenerService.settle(it) }
-        dismissIsland()
+        val current = previewStack.value
+        if (current.size > 1) {
+            val remaining = current.drop(1)
+            previewStack.value = remaining
+            IslandPreviewBus.updateActivePreviewCount(remaining.size)
+            currentEvent.value = remaining.first()
+            syncWindowSize()
+            scheduleDismiss()
+        } else {
+            previewStack.value = emptyList()
+            IslandPreviewBus.updateActivePreviewCount(0)
+            dismissIsland()
+        }
         action.intent?.let(::sendPendingIntent)
     }
 
@@ -2241,7 +2414,19 @@ class IslandOverlayController(private val context: Context) {
         val reply = action.reply ?: return
         val intent = action.intent ?: return
         currentEvent.value?.notificationKey?.let { CutoutNotificationListenerService.settle(it) }
-        dismissIsland()
+        val current = previewStack.value
+        if (current.size > 1) {
+            val remaining = current.drop(1)
+            previewStack.value = remaining
+            IslandPreviewBus.updateActivePreviewCount(remaining.size)
+            currentEvent.value = remaining.first()
+            syncWindowSize()
+            scheduleDismiss()
+        } else {
+            previewStack.value = emptyList()
+            IslandPreviewBus.updateActivePreviewCount(0)
+            dismissIsland()
+        }
         val fillIn = Intent()
         val results = Bundle().apply { putCharSequence(reply.resultKey, text) }
         RemoteInput.addResultsToIntent(reply.remoteInputs.toTypedArray(), fillIn, results)
@@ -2290,6 +2475,8 @@ class IslandOverlayController(private val context: Context) {
      */
     private fun dismissIsland() {
         dismissJob?.cancel()
+        previewStack.value = emptyList()
+        IslandPreviewBus.updateActivePreviewCount(0)
         restoreSlotsOnCollapse = false
         forcedExpanded.value = null
         expanded = false
@@ -2433,6 +2620,23 @@ class IslandOverlayController(private val context: Context) {
                 syncWindowSize()
                 return@launch
             }
+            val current = previewStack.value
+            if (current.size > 1) {
+                val front = current.first()
+                front.notificationKey?.let { CutoutNotificationListenerService.release(it) }
+                val remaining = current.drop(1)
+                previewStack.value = remaining
+                IslandPreviewBus.updateActivePreviewCount(remaining.size)
+                currentEvent.value = remaining.first()
+                syncWindowSize()
+                scheduleDismiss()
+                return@launch
+            } else if (current.isNotEmpty()) {
+                val front = current.first()
+                front.notificationKey?.let { CutoutNotificationListenerService.release(it) }
+                previewStack.value = emptyList()
+                IslandPreviewBus.updateActivePreviewCount(0)
+            }
             // Whatever is parked in the bubble is already on screen, so promote that copy rather
             // than letting livePillToReturnTo resolve a second one.
             if (promoteSatelliteCollapsed()) return@launch
@@ -2570,6 +2774,14 @@ class IslandOverlayController(private val context: Context) {
         }
     }
 
+    /** State bundle combining preview pin controls from the bus. */
+    private data class PreviewPinConfig(
+        val pinned: Boolean,
+        val expandedTab: Boolean?,
+        val previewSig: CutoutSignal?,
+        val previewStackSigs: List<CutoutSignal>,
+    )
+
     internal companion object {
         fun shouldCollapseOnOutsideTouch(
             isExpanded: Boolean,
@@ -2587,6 +2799,9 @@ class IslandOverlayController(private val context: Context) {
          * scale stay tappable — kept small so the shade-pull area beside the pill stays free.
          */
         const val TOUCH_MARGIN_DP = 12
+
+        /** Extra height allocated for stacked notification preview peek cards below the active card. */
+        const val PREVIEW_STACK_HEIGHT_BONUS_DP = 16
 
 
         /**

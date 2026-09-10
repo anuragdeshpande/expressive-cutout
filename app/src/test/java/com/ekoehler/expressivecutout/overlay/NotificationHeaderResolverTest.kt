@@ -47,6 +47,18 @@ class NotificationHeaderResolverTest {
     }
 
     @Test
+    fun testFormatCompactRelativeTime() {
+        val now = 100_000_000L
+        assertEquals("Now", NotificationHeaderResolver.formatCompactRelativeTime(now, now))
+        assertEquals("Now", NotificationHeaderResolver.formatCompactRelativeTime(now - 30_000L, now))
+        assertEquals("Now", NotificationHeaderResolver.formatCompactRelativeTime(now - 59_000L, now))
+        assertEquals("1m", NotificationHeaderResolver.formatCompactRelativeTime(now - 60_000L, now))
+        assertEquals("2m", NotificationHeaderResolver.formatCompactRelativeTime(now - 120_000L, now))
+        assertEquals("1h", NotificationHeaderResolver.formatCompactRelativeTime(now - 3600_000L, now))
+        assertEquals("1d", NotificationHeaderResolver.formatCompactRelativeTime(now - 24 * 3600_000L, now))
+    }
+
+    @Test
     fun testFormatNotificationHeaderBoth() {
         val header = NotificationHeaderResolver.formatHeader(
             appName = "Expressive Cutout",

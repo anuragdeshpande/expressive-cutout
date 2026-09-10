@@ -97,10 +97,13 @@ class CutoutNotificationListenerService : NotificationListenerService() {
     private val scope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
 
     private val behaviourPreferences by lazy { BehaviourPreferences(this) }
+    private val previewPreferences by lazy { com.ekoehler.expressivecutout.data.NotificationPreviewPreferences(this) }
 
     private val alerter by lazy { NotificationAlerter(this) }
 
     private var behaviourJob: Job? = null
+    private var previewJob: Job? = null
+    private var previewSettings = com.ekoehler.expressivecutout.data.NotificationPreviewSettings()
 
     /**
      * Mirror of BehaviourSettings.dismissNotifications, cached because onNotificationPosted runs on
@@ -177,6 +180,7 @@ class CutoutNotificationListenerService : NotificationListenerService() {
         _bound.value = true
         observeBehaviour()
         seedMediaArt()
+        refreshDetectedApps()
     }
 
     /**
@@ -224,15 +228,25 @@ class CutoutNotificationListenerService : NotificationListenerService() {
      * a no-op.
      */
     private fun observeBehaviour() {
-        if (behaviourJob?.isActive == true) return
-        behaviourJob = scope.launch {
-            behaviourPreferences.settings
-                .distinctUntilChanged()
-                .collect { settings ->
-                    dismissNotifications = settings.dismissNotifications
-                    displayWhileDnd = settings.displayWhileDnd
-                    alertOnNotification = settings.alertOnNotification
-                }
+        if (behaviourJob?.isActive != true) {
+            behaviourJob = scope.launch {
+                behaviourPreferences.settings
+                    .distinctUntilChanged()
+                    .collect { settings ->
+                        dismissNotifications = settings.dismissNotifications
+                        displayWhileDnd = settings.displayWhileDnd
+                        alertOnNotification = settings.alertOnNotification
+                    }
+            }
+        }
+        if (previewJob?.isActive != true) {
+            previewJob = scope.launch {
+                previewPreferences.settings
+                    .distinctUntilChanged()
+                    .collect { settings ->
+                        previewSettings = settings
+                    }
+            }
         }
     }
 
@@ -586,6 +600,27 @@ class CutoutNotificationListenerService : NotificationListenerService() {
         if (progress == null && suppressed.isSuppressed(fingerprint)) return
 
         val isSilent = isSilentNotification(notification, rankingMap)
+        val surfaceableActions = notification.notification.surfaceableActions()
+        recordDetected(notification.packageName, surfaceableActions.map { it.title })
+        com.ekoehler.expressivecutout.integrations.DynamicActionUnfurler.maybeUnfurl(
+            sbn = notification,
+            autoUnfurlEnabled = previewSettings.autoUnfurlDynamicActions,
+        )
+        val evaluation = com.ekoehler.expressivecutout.integrations.NotificationRuleEvaluator.evaluate(
+            sbn = notification,
+            actions = surfaceableActions,
+            appName = appName,
+            settings = previewSettings,
+        )
+
+        // When the preview stack has reached maxStackSize, leave subsequent notifications in the shade
+        if (evaluation.mode == com.ekoehler.expressivecutout.data.NotificationMode.PREVIEW &&
+            previewSettings.enabled &&
+            com.ekoehler.expressivecutout.core.IslandPreviewBus.activePreviewCount.value >= previewSettings.maxStackSize
+        ) {
+            return
+        }
+
         val islandEvent = CutoutSignal.Notification(
             packageName = notification.packageName,
             title = title,
@@ -594,11 +629,16 @@ class CutoutNotificationListenerService : NotificationListenerService() {
             postTimeMs = postTimeMs,
             key = notification.key,
             contentIntent = notification.notification.contentIntent,
-            actions = notification.notification.surfaceableActions(),
+            actions = surfaceableActions,
             largeIcon = notification.notification.getLargeIcon(),
             smallIcon = notification.notification.smallIcon,
             progressData = progress,
             isSilent = isSilent,
+            mode = evaluation.mode,
+            previewContextTag = evaluation.contextTag,
+            previewSummary = evaluation.summary,
+            isContentMasked = evaluation.isContentMasked,
+            primaryAction = evaluation.primaryAction,
         )
 
         IslandEventBus.emit(islandEvent)
@@ -901,6 +941,39 @@ class CutoutNotificationListenerService : NotificationListenerService() {
          */
         fun release(key: String) {
             instance?.run { markSuppressed(key); releaseHeld(key) }
+        }
+
+        private val _detectedAppsAndActions = MutableStateFlow<Map<String, List<String>>>(emptyMap())
+
+        /**
+         * Discovered apps and their observed notification action button titles.
+         */
+        val detectedAppsAndActions: StateFlow<Map<String, List<String>>> = _detectedAppsAndActions.asStateFlow()
+
+        /**
+         * Inspects active notifications to refresh the list of detected apps and action titles.
+         */
+        fun refreshDetectedApps(): Map<String, List<String>> {
+            val inst = instance ?: return _detectedAppsAndActions.value
+            val active = runCatching { inst.activeNotifications }.getOrNull().orEmpty()
+            val current = _detectedAppsAndActions.value.toMutableMap()
+            for (sbn in active) {
+                val pkg = sbn.packageName ?: continue
+                val actions = sbn.notification?.actions?.mapNotNull { it.title?.toString()?.takeIf { t -> t.isNotBlank() } }.orEmpty()
+                val existing = current[pkg]?.toMutableSet() ?: mutableSetOf()
+                existing.addAll(actions)
+                current[pkg] = existing.toList()
+            }
+            _detectedAppsAndActions.value = current
+            return current
+        }
+
+        private fun recordDetected(packageName: String, actionTitles: List<String>) {
+            val current = _detectedAppsAndActions.value.toMutableMap()
+            val existing = current[packageName]?.toMutableSet() ?: mutableSetOf()
+            existing.addAll(actionTitles)
+            current[packageName] = existing.toList()
+            _detectedAppsAndActions.value = current
         }
     }
 }

@@ -204,6 +204,14 @@ internal fun AppearanceScreen(
             onCheckedChange = viewModel::setPreferDynamicIconColor,
         )
 
+        SettingsToggleCard(
+            shape = RoundedCornerShape(24.dp),
+            title = stringResource(R.string.appearance_virtual_led_title),
+            description = stringResource(R.string.appearance_virtual_led_desc),
+            checked = appearance.showVirtualLed,
+            onCheckedChange = viewModel::setShowVirtualLed,
+        )
+
         ColorPickerCard(
             label = stringResource(R.string.appearance_text_color),
             selected = appearance.textColor,

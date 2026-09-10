@@ -44,6 +44,20 @@ object NotificationHeaderResolver {
     }
 
     /**
+     * Formats an elapsed timestamp into a compact relative duration string
+     * suitable for tight header spaces (e.g. "Now", "2m", "2h", "1d").
+     */
+    fun formatCompactRelativeTime(postTimeMs: Long, nowMs: Long = System.currentTimeMillis()): String {
+        val elapsedSeconds = ((nowMs - postTimeMs) / 1000L).coerceAtLeast(0L)
+        return when {
+            elapsedSeconds < 60L -> "Now"
+            elapsedSeconds < 3600L -> "${elapsedSeconds / 60L}m"
+            elapsedSeconds < 86400L -> "${elapsedSeconds / 3600L}h"
+            else -> "${elapsedSeconds / 86400L}d"
+        }
+    }
+
+    /**
      * Combines the resolved app name and relative timestamp according to visibility preferences.
      * When both are active, they are joined with " • ".
      */

@@ -19,6 +19,32 @@ object IslandPreviewBus {
     private val mutablePreviewSignal = MutableStateFlow<CutoutSignal?>(null)
     val previewSignal: StateFlow<CutoutSignal?> = mutablePreviewSignal
 
+    private val mutablePreviewStackSignals = MutableStateFlow<List<CutoutSignal>>(emptyList())
+    val previewStackSignals: StateFlow<List<CutoutSignal>> = mutablePreviewStackSignals
+
+    private val mutableActivePreviewCount = MutableStateFlow(0)
+    val activePreviewCount: StateFlow<Int> = mutableActivePreviewCount
+
+    private val mutableRotationCycle = MutableStateFlow(0)
+    val rotationCycle: StateFlow<Int> = mutableRotationCycle
+
+    private val mutableCycleRequest = MutableStateFlow(0)
+    val cycleRequest: StateFlow<Int> = mutableCycleRequest
+
+    /** Increments to signal that the preview stack was cycled via flick gesture. */
+    fun notifyRotated() {
+        mutableRotationCycle.value++
+    }
+
+    /** Increments to signal that the real overlay should animate its deck cycle. */
+    fun requestCycle() {
+        mutableCycleRequest.value++
+    }
+
+    fun updateActivePreviewCount(count: Int) {
+        mutableActivePreviewCount.value = count
+    }
+
     fun setActive(value: Boolean) {
         mutableActive.value = value
     }
@@ -29,5 +55,15 @@ object IslandPreviewBus {
 
     fun setPreviewSignal(signal: CutoutSignal?) {
         mutablePreviewSignal.value = signal
+        if (signal != null) {
+            mutablePreviewStackSignals.value = listOf(signal)
+        } else {
+            mutablePreviewStackSignals.value = emptyList()
+        }
+    }
+
+    fun setPreviewStack(signals: List<CutoutSignal>) {
+        mutablePreviewStackSignals.value = signals
+        mutablePreviewSignal.value = signals.firstOrNull()
     }
 }

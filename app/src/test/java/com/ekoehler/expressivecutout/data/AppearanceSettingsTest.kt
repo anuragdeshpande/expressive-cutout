@@ -27,4 +27,22 @@ class AppearanceSettingsTest {
             settings.showFullNotificationText,
         )
     }
+
+    @Test
+    fun `default appearance settings enable virtual LED indicator`() {
+        val settings = AppearanceSettings()
+        assertTrue(
+            "Show virtual LED indicator should default to true",
+            settings.showVirtualLed,
+        )
+    }
+
+    @Test
+    fun `custom appearance settings preserve virtual LED indicator toggle`() {
+        val settings = AppearanceSettings(showVirtualLed = false)
+        assertFalse(
+            "Show virtual LED indicator should be configurable",
+            settings.showVirtualLed,
+        )
+    }
 }

@@ -208,6 +208,32 @@ class IconResolver(private val context: Context) {
             progressData = signal.progressData,
             packageName = packageName,
             appColor = appColor,
+            isContentMasked = signal.isContentMasked,
+            preview = if (signal.mode == com.ekoehler.expressivecutout.data.NotificationMode.PREVIEW) {
+                val summary = signal.previewSummary ?: if (signal.isContentMasked) {
+                    context.getString(R.string.notif_preview_privacy_hidden_preview)
+                } else null
+                if (summary != null) {
+                    NotificationPreviewOptions(
+                        contextTag = signal.previewContextTag,
+                        summary = summary,
+                        isContentMasked = signal.isContentMasked,
+                        primaryAction = signal.primaryAction?.let { action ->
+                            IslandAction(
+                                label = action.title,
+                                intent = action.intent,
+                                reply = action.reply?.let { IslandReply(it.resultKey, it.remoteInputs, it.hint) },
+                            )
+                        } ?: signal.actions.firstOrNull()?.let { action ->
+                            IslandAction(
+                                label = action.title,
+                                intent = action.intent,
+                                reply = action.reply?.let { IslandReply(it.resultKey, it.remoteInputs, it.hint) },
+                            )
+                        },
+                    )
+                } else null
+            } else null,
             actions = signal.actions.map { action ->
                 IslandAction(
                     label = action.title,

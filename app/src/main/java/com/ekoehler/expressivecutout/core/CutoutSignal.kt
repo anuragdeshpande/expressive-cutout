@@ -63,6 +63,11 @@ sealed interface CutoutSignal {
         val smallIcon: Icon? = null,
         val progressData: ProgressData? = null,
         val isSilent: Boolean = false,
+        val mode: com.ekoehler.expressivecutout.data.NotificationMode = com.ekoehler.expressivecutout.data.NotificationMode.NORMAL,
+        val previewContextTag: String? = null,
+        val previewSummary: String? = null,
+        val isContentMasked: Boolean = false,
+        val primaryAction: Action? = null,
     ) : CutoutSignal {
 
         /**

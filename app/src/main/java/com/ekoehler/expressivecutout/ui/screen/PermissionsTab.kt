@@ -48,16 +48,26 @@ import com.ekoehler.expressivecutout.permissions.Permissions
 import com.ekoehler.expressivecutout.system.ShizukuState
 import com.ekoehler.expressivecutout.system.ShizukuStatus
 
+import androidx.compose.material.icons.rounded.LockOpen
+import androidx.compose.material.icons.rounded.Security
+import androidx.compose.material3.Switch
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ekoehler.expressivecutout.ui.AppViewModel
+
 /**
  * "Permissions" destination: surfaces the notification, overlay (accessibility) and
  * battery-optimisation grants, re-reading live status on every resume so returning from a
  * system settings screen instantly reflects the change.
  */
 @Composable
-fun PermissionsTab(contentPadding: PaddingValues) {
+fun PermissionsTab(
+    contentPadding: PaddingValues,
+    viewModel: AppViewModel = viewModel(),
+) {
     val context = LocalContext.current
     val status = rememberPermissionStatus()
     val shizuku by ShizukuState.status.collectAsStateWithLifecycle()
+    val previewSettings by viewModel.notificationPreviewSettings.collectAsStateWithLifecycle()
 
     // Shizuku can be started while we're backgrounded, and returning here is the natural moment to
     // notice, so re-read on resume alongside the grants rememberPermissionStatus already refreshes.
@@ -118,6 +128,58 @@ fun PermissionsTab(contentPadding: PaddingValues) {
                     if (shizuku == ShizukuStatus.PERMISSION_REQUIRED) ShizukuState.requestPermission()
                     else Permissions.openShizuku(context)
                 },
+            )
+            PermissionSwitchCard(
+                icon = Icons.Rounded.Security,
+                title = stringResource(R.string.perm_sensitive_content_title),
+                description = stringResource(R.string.perm_sensitive_content_desc),
+                checked = previewSettings.allowSensitiveContentGlobally,
+                onCheckedChange = { viewModel.setAllowSensitiveContentGlobally(it) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun PermissionSwitchCard(
+    icon: ImageVector,
+    title: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(28.dp),
+            )
+            Spacer(Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = title, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
             )
         }
     }

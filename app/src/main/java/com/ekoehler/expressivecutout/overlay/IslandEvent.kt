@@ -136,6 +136,12 @@ data class IslandEvent(
      */
     val volume: VolumeOverlayOptions? = null,
     /**
+     * When non-null this notification is rendered in the 2-row preview state on the island.
+     */
+    val preview: NotificationPreviewOptions? = null,
+    /** When true, the notification content is masked for privacy. */
+    val isContentMasked: Boolean = false,
+    /**
      * Contains the progress of this notification if it is a progress one.
      * Is null otherwise
      */
@@ -163,6 +169,15 @@ data class IslandEvent(
     val actionIntentAction: String? = null,
     /** Optional URI data to attach to [actionIntentAction]. */
     val actionIntentUri: String? = null,
+)
+
+/** Options and data for rendering the 2-row preview state on the island. */
+@Immutable
+data class NotificationPreviewOptions(
+    val contextTag: String?,
+    val summary: String,
+    val isContentMasked: Boolean = false,
+    val primaryAction: IslandAction? = null,
 )
 
 /** Which parts of the volume overlay integration to render, per its settings. */

@@ -35,6 +35,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -76,6 +78,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ClosedCaption
 import androidx.compose.material.icons.rounded.ClosedCaptionOff
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -90,6 +93,7 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import com.ekoehler.expressivecutout.core.BrightnessBus
+import com.ekoehler.expressivecutout.core.IslandPreviewBus
 import com.ekoehler.expressivecutout.core.VolumeBus
 import com.ekoehler.expressivecutout.service.CutoutAccessibilityService
 import androidx.compose.material3.LocalContentColor
@@ -129,6 +133,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -476,6 +481,8 @@ fun DynamicIsland(
     onSatelliteClick: () -> Unit = {},
     onEmptyClick: () -> Unit = {},
     onCenterShortcut: (CenterShortcut) -> Unit = {},
+    previewStack: List<IslandEvent> = emptyList(),
+    onFlickNext: () -> Unit = {},
     onExpandedChange: (Boolean) -> Unit,
     onActivate: () -> Unit,
     onAction: (IslandAction) -> Unit,
@@ -514,6 +521,18 @@ fun DynamicIsland(
     val pressWidens = actionButtonAnimation == ActionButtonAnimation.EXPAND
     val dismissOffsetX = remember(shownEvent?.id) { Animatable(0f) }
     val scope = rememberCoroutineScope()
+    val previewFlickAnim = remember { Animatable(0f) }
+    var isFlickingPreview by remember { mutableStateOf(false) }
+
+    val cycleRequest by IslandPreviewBus.cycleRequest.collectAsStateWithLifecycle()
+    LaunchedEffect(cycleRequest) {
+        if (cycleRequest > 0 && previewStack.size > 1 && !isFlickingPreview) {
+            isFlickingPreview = true
+            previewFlickAnim.animateTo(1f, animationSpec = tween(220, easing = FastOutSlowInEasing))
+            previewFlickAnim.snapTo(0f)
+            isFlickingPreview = false
+        }
+    }
 
     val animScale = animationDurationMs / BASE_TRANSITION_MS.toFloat()
     fun scaled(baseMs: Int) = (baseMs * animScale).roundToInt()
@@ -565,10 +584,54 @@ fun DynamicIsland(
         }
     }
 
+    val isPreview = shownEvent?.preview != null && !isExpanded && !isCall && !emptyPill
+    val previewWidthPercent = remember(
+        shownEvent?.id,
+        shownEvent?.appName,
+        shownEvent?.postTimeMs,
+        shownEvent?.preview?.summary,
+        shownEvent?.preview?.primaryAction?.label,
+        previewStack.size,
+        displayWidthDp,
+        density,
+        collapsed.widthPercent,
+        expanded.widthPercent,
+    ) {
+        val preview = shownEvent?.preview
+        if (preview != null) {
+            val appLabel = shownEvent.appName ?: preview.contextTag ?: "Notification"
+            val compactTime = NotificationHeaderResolver.formatCompactRelativeTime(
+                shownEvent.postTimeMs ?: System.currentTimeMillis()
+            )
+            val header = "$appLabel • $compactTime"
+            previewCutoutWidthPercent(
+                appName = appLabel,
+                headerText = header,
+                summaryText = preview.summary,
+                actionLabel = preview.primaryAction?.label,
+                stackCount = previewStack.size,
+                isMasked = shownEvent.isContentMasked || preview.isContentMasked,
+                displayWidthDp = displayWidthDp,
+                density = density,
+                minWidthPercent = collapsed.widthPercent,
+                maxWidthPercent = maxOf(expanded.widthPercent, 88),
+            )
+        } else {
+            maxOf(expanded.widthPercent, 88)
+        }
+    }
     val dims = when {
         emptyPill && !isExpanded -> collapsed
         callTwoRow -> expanded
         isCall -> collapsed.asCallCutout(callWidthPercent)
+        isPreview -> collapsed.copy(
+            widthPercent = previewWidthPercent,
+            heightDp = 56,
+            cornerTopLeftDp = 28,
+            cornerTopRightDp = 28,
+            cornerBottomLeftDp = 28,
+            cornerBottomRightDp = 28,
+        )
         // The music tile keeps the expanded width, corners and offsets, but sizes itself from its own
         // content — see [mediaExpandedBaseHeightDp].
         isExpanded && shownEvent?.media != null ->
@@ -857,20 +920,129 @@ fun DynamicIsland(
                 .padding(start = stickPaddingStart, end = stickPaddingEnd)
                 .offset(x = if (isStickToCamera) 0.dp else offsetX, y = if (isStickToCamera) 0.dp else offsetY),
         ) {
+            if (previewStack.size > 1 && !isExpanded && shownEvent?.preview != null) {
+                val fProgress = previewFlickAnim.value
+
+                // Tucking card at the back of the deck
+                if (fProgress > 0f) {
+                    val tuckY = if (previewStack.size > 2) lerpDp(14.dp, 10.dp, fProgress) else lerpDp(8.dp, 5.dp, fProgress)
+                    val tuckWidthFactor = if (previewStack.size > 2) (0.85f + 0.05f * fProgress) else (0.90f + 0.05f * fProgress)
+                    val tuckColor = if (previewStack.size > 2) Color(0xFF08090C) else Color(0xFF0A0B0E)
+                    val tuckBorder = if (previewStack.size > 2) Color(0xFF1C1E23) else Color(0xFF24262C)
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .width(revealWidth * tuckWidthFactor)
+                            .height(revealHeight)
+                            .offset(y = tuckY)
+                            .graphicsLayer { alpha = fProgress },
+                        shape = cornerShape(revealTopLeft, revealTopRight, revealBottomLeft, revealBottomRight),
+                        color = tuckColor,
+                        border = BorderStroke(1.dp, tuckBorder),
+                    ) {}
+                }
+
+                // Peek 3 card
+                if (previewStack.size > 2) {
+                    val peek3Y = lerpDp(10.dp, 5.dp, fProgress)
+                    val peek3WidthFactor = 0.90f + 0.05f * fProgress
+                    val peek3Color = lerp(Color(0xFF08090C), Color(0xFF0A0B0E), fProgress)
+                    val peek3Border = lerp(Color(0xFF1C1E23), Color(0xFF24262C), fProgress)
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .width(revealWidth * peek3WidthFactor)
+                            .height(revealHeight)
+                            .offset(y = peek3Y),
+                        shape = cornerShape(revealTopLeft, revealTopRight, revealBottomLeft, revealBottomRight),
+                        color = peek3Color,
+                        border = BorderStroke(1.dp, peek3Border),
+                    ) {}
+                }
+
+                // Peek 2 card
+                val peek2Y = lerpDp(5.dp, 0.dp, fProgress)
+                val peek2WidthFactor = 0.95f + 0.05f * fProgress
+                val peek2Color = lerp(Color(0xFF0A0B0E), Color(0xFF0C0D10), fProgress)
+                val peek2Border = lerp(Color(0xFF24262C), Color(0xFF2E3138), fProgress)
+                val nextEvent = previewStack.getOrNull(1)
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .width(revealWidth * peek2WidthFactor)
+                        .height(revealHeight)
+                        .offset(y = peek2Y),
+                    shape = cornerShape(revealTopLeft, revealTopRight, revealBottomLeft, revealBottomRight),
+                    color = peek2Color,
+                    border = BorderStroke(1.dp, peek2Border),
+                ) {
+                    if (nextEvent?.preview != null && fProgress > 0f) {
+                        Box(modifier = Modifier.fillMaxSize().graphicsLayer { alpha = fProgress }) {
+                            NotificationPreviewContent(
+                                event = nextEvent,
+                                preview = nextEvent.preview,
+                                appearance = appearance,
+                                stackCount = previewStack.size,
+                                stackIndex = 2,
+                                onAction = onAction,
+                            )
+                        }
+                    }
+                }
+            }
+
             if (present || reveal.value > 0f) {
                 IslandSurface(
                     modifier = Modifier
+                        .align(Alignment.TopCenter)
                         .width(revealWidth)
                         .height(revealHeight)
                         .graphicsLayer {
                             val extraPx = PRESS_EXPAND_DP.toPx() * 2f * pressExpand.value
                             val widen = if (size.width > 0f) (size.width + extraPx) / size.width else 1f
-                            scaleX = boopScale.value * widen
-                            scaleY = boopScale.value
+                            val fProgress = previewFlickAnim.value
+                            scaleX = boopScale.value * widen * (1f - fProgress * 0.04f)
+                            scaleY = boopScale.value * (1f - fProgress * 0.04f)
                             translationX = dismissOffsetX.value
+                            translationY = -fProgress * 28.dp.toPx()
                             val travel = abs(dismissOffsetX.value) / size.width.coerceAtLeast(1f)
                             val revealAlpha = (reveal.value / 0.2f).coerceIn(0f, 1f)
-                            alpha = (1f - travel).coerceIn(0.25f, 1f) * revealAlpha
+                            val flickAlpha = (1f - fProgress * 1.3f).coerceIn(0f, 1f)
+                            alpha = (1f - travel).coerceIn(0.25f, 1f) * revealAlpha * flickAlpha
+                        }
+                        // Swipe up on stacked preview cards to flick to the next card in the stack.
+                        .pointerInput(previewStack.size, isExpanded) {
+                            if (previewStack.size <= 1 || isExpanded) return@pointerInput
+                            val threshold = 10.dp.toPx()
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                                val startY = down.position.y
+                                var triggered = false
+                                val pointerId = down.id
+                                while (true) {
+                                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                                    val change = event.changes.firstOrNull { it.id == pointerId } ?: break
+                                    val dragUpDistance = startY - change.position.y
+                                    if (dragUpDistance > 4f) {
+                                        change.consume()
+                                    }
+                                    if (!isFlickingPreview && !triggered && dragUpDistance >= threshold) {
+                                        triggered = true
+                                        isFlickingPreview = true
+                                        change.consume()
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        scope.launch {
+                                            previewFlickAnim.animateTo(1f, animationSpec = tween(220, easing = FastOutSlowInEasing))
+                                            onFlickNext()
+                                            previewFlickAnim.snapTo(0f)
+                                            isFlickingPreview = false
+                                        }
+                                    }
+                                    if (!change.pressed) {
+                                        break
+                                    }
+                                }
+                            }
                         }
                         .pointerInput(forcedExpanded, isExpanded, replying, emptyPill, pressWidens, shownEvent?.id) {
                             if (forcedExpanded == true) {
@@ -959,7 +1131,7 @@ fun DynamicIsland(
                         .pointerInput(forcedExpanded, isExpanded, replying, shrinkOnSwipeUp, emptyPill, shownEvent?.id) {
                             // The resting empty cutout has no expanded state to shrink back from, so
                             // don't install the detector at all — it would only swallow vertical drags.
-                            if (forcedExpanded != null || !shrinkOnSwipeUp || emptyPill) return@pointerInput
+                            if (forcedExpanded != null || !shrinkOnSwipeUp || emptyPill || !isExpanded) return@pointerInput
                             val threshold = SWIPE_UP_SHRINK_THRESHOLD_DP.dp.toPx()
                             var dragTotal = 0f
                             detectVerticalDragGestures(
@@ -1022,6 +1194,7 @@ fun DynamicIsland(
                     progress = expandProgress,
                     appColor = shownEvent?.primaryColor(),
                     adaptiveColor = shownEvent?.primaryColor(),
+                    isPreview = isPreview,
                 ) {
                     Crossfade(targetState = isExpanded, animationSpec = tween(scaled(150)), label = "islandContent") { showExpanded ->
                         if (emptyPill) {
@@ -1086,6 +1259,16 @@ fun DynamicIsland(
                                             else expandedNotificationHeightDp = hDp
                                         },
                                     )
+                                } else if (e.preview != null) {
+                                    val stackIdx = (previewStack.indexOfFirst { it.notificationKey == e.notificationKey }.takeIf { it >= 0 } ?: 0) + 1
+                                    NotificationPreviewContent(
+                                        event = e,
+                                        preview = e.preview,
+                                        appearance = appearance,
+                                        stackCount = previewStack.size,
+                                        stackIndex = stackIdx,
+                                        onAction = onAction,
+                                    )
                                 } else {
                                     CollapsedContent(
                                         event = e,
@@ -1093,6 +1276,7 @@ fun DynamicIsland(
                                         isStickToCamera = isStickToCamera,
                                         trailingInsetDp = collapsedTrailingInsetDp,
                                         iconPop = iconPop,
+                                        showVirtualLed = appearance.showVirtualLed,
                                     )
                                 }
                             }
@@ -1215,7 +1399,7 @@ fun IslandPreview(
                 },
             )
         } else {
-            CollapsedContent(event, heightDp)
+            CollapsedContent(event, heightDp, showVirtualLed = appearance.showVirtualLed)
         }
     }
 }
@@ -1233,11 +1417,12 @@ internal fun IslandSurface(
     progress: Float,
     appColor: Color? = null,
     adaptiveColor: Color? = null,
+    isPreview: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    val normalBrush = appearance.backgroundNormal.resolveBrush(appColor, adaptiveColor)
+    val normalBrush = if (isPreview) SolidColor(Color(0xFF0C0D10)) else appearance.backgroundNormal.resolveBrush(appColor, adaptiveColor)
     val expandedBrush = appearance.backgroundExpanded.resolveBrush(appColor, adaptiveColor)
-    val normalBaseColor = appearance.backgroundNormal.resolveBaseColor(appColor, adaptiveColor)
+    val normalBaseColor = if (isPreview) Color(0xFF0C0D10) else appearance.backgroundNormal.resolveBaseColor(appColor, adaptiveColor)
     val expandedBaseColor = appearance.backgroundExpanded.resolveBaseColor(appColor, adaptiveColor)
     val currentBaseColor = lerp(normalBaseColor, expandedBaseColor, progress)
 
@@ -1253,6 +1438,8 @@ internal fun IslandSurface(
         val baseColor = appearance.strokeColor.resolve(appColor, adaptiveColor)
         val strokeFinalColor = baseColor.copy(alpha = (baseColor.alpha * appearance.strokeOpacity).coerceIn(0f, 1f))
         BorderStroke(appearance.strokeWidthDp.dp, strokeFinalColor)
+    } else if (isPreview) {
+        BorderStroke(1.dp, Color(0xFF2E3138))
     } else {
         null
     }
@@ -1388,6 +1575,7 @@ internal fun EventBadge(
  *   here because the collapsed content re-enters composition every time the island collapses back
  *   from expanded, which would otherwise re-fire the pop on a collapse. Null (the settings preview)
  *   leaves the badge at rest.
+ * @param showVirtualLed whether to show the pulsing status light on the trailing edge for system events.
  */
 @Composable
 private fun CollapsedContent(
@@ -1396,6 +1584,7 @@ private fun CollapsedContent(
     isStickToCamera: Boolean = false,
     trailingInsetDp: Int = 0,
     iconPop: Animatable<Float, AnimationVector1D>? = null,
+    showVirtualLed: Boolean = true,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         // Scaled after the padding so the pop grows the badge about its own centre instead of
@@ -1500,7 +1689,7 @@ private fun CollapsedContent(
                         .align(Alignment.CenterEnd)
                         .padding(end = (heightDp * 0.20f).dp),
                 )
-            } else if (event.statusDotColor != null) {
+            } else if (showVirtualLed && event.statusDotColor != null) {
                 RadiatingStatusDot(
                     color = event.statusDotColor,
                     sizeDp = (heightDp * 0.18f).dp,
@@ -2046,6 +2235,22 @@ fun rememberRelativeTime(postTimeMs: Long?): String? {
     return relativeTime
 }
 
+/** Formats an elapsed timestamp into a compact relative duration string (e.g. "Now", "2m", "2h", "1d"). */
+fun formatCompactRelativeTime(postTimeMs: Long, nowMs: Long = System.currentTimeMillis()): String =
+    NotificationHeaderResolver.formatCompactRelativeTime(postTimeMs, nowMs)
+
+@Composable
+fun rememberCompactRelativeTime(postTimeMs: Long?): String? {
+    if (postTimeMs == null || postTimeMs <= 0L) return null
+    val relativeTime by produceState(initialValue = formatCompactRelativeTime(postTimeMs), key1 = postTimeMs) {
+        while (true) {
+            delay(1_000L)
+            value = formatCompactRelativeTime(postTimeMs)
+        }
+    }
+    return relativeTime
+}
+
 @Composable
 private fun ExpandedContent(
     event: IslandEvent,
@@ -2159,22 +2364,61 @@ private fun ExpandedContent(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    Text(
-                        text = event.label,
-                        color = LocalContentColor.current,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    event.detail?.let { detail ->
+                    if (event.isContentMasked) {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp),
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(3.dp),
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Lock,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(14.dp),
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.notif_preview_privacy_hidden_title),
+                                        color = LocalContentColor.current,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                }
+                                Text(
+                                    text = stringResource(R.string.notif_preview_privacy_hidden_desc),
+                                    color = LocalContentColor.current.copy(alpha = 0.70f),
+                                    fontSize = 11.sp,
+                                    lineHeight = 15.sp,
+                                )
+                            }
+                        }
+                    } else {
                         Text(
-                            text = detail,
-                            color = LocalContentColor.current.copy(alpha = 0.70f),
-                            fontSize = 12.sp,
-                            maxLines = if (appearance.showFullNotificationText) 20 else 2,
+                            text = event.label,
+                            color = LocalContentColor.current,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
+                        event.detail?.let { detail ->
+                            Text(
+                                text = detail,
+                                color = LocalContentColor.current.copy(alpha = 0.70f),
+                                fontSize = 12.sp,
+                                maxLines = if (appearance.showFullNotificationText) 20 else 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                     if (event.secondaryLines.isNotEmpty()) {
                         Column(
@@ -3114,6 +3358,232 @@ internal fun callCutoutWidthPercent(
     // An incoming call is pinned to the full width; a connected one adapts from the minimum up.
     val floor = if (incoming) CALL_MAX_WIDTH_PERCENT else CALL_MIN_WIDTH_PERCENT
     return percent.coerceIn(floor, CALL_MAX_WIDTH_PERCENT)
+}
+
+/**
+ * The width (as a screen-width percentage) the notification preview cutout should span
+ * based on the measured content of the preview (app label, timestamp, stack badge,
+ * smart title, and primary action chip). Clamped between [minWidthPercent] (so the
+ * camera cutout remains covered) and [maxWidthPercent].
+ */
+internal fun previewCutoutWidthPercent(
+    appName: String?,
+    headerText: String?,
+    summaryText: String?,
+    actionLabel: String?,
+    stackCount: Int,
+    isMasked: Boolean,
+    displayWidthDp: Int,
+    density: Float,
+    minWidthPercent: Int = 45,
+    maxWidthPercent: Int = 88,
+): Int {
+    val fixedDp = 12 + 36 + 10 + 12
+    val textPaint = runCatching {
+        android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    }.getOrNull()
+
+    fun measureTextWidthDp(text: String, sizeSp: Float, isBold: Boolean): Float {
+        if (textPaint != null) {
+            return runCatching {
+                textPaint.textSize = sizeSp * density
+                textPaint.typeface = if (isBold) {
+                    android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+                } else {
+                    android.graphics.Typeface.DEFAULT
+                }
+                textPaint.measureText(text) / density
+            }.getOrDefault(text.length * (sizeSp * 0.62f))
+        }
+        return text.length * (sizeSp * 0.62f)
+    }
+
+    val hText = headerText ?: appName ?: "Notification"
+    val headerTextDp = measureTextWidthDp(hText, 11f, true)
+    val stackBadgeDp = if (stackCount > 1) 32 else 0
+    val row1Dp = headerTextDp + stackBadgeDp
+
+    val sText = summaryText ?: "Notification"
+    val summaryTextDp = measureTextWidthDp(sText, 12f, false)
+    val maskLockDp = if (isMasked) 15 else 0
+    val row2Dp = summaryTextDp + maskLockDp
+
+    val textColumnDp = maxOf(row1Dp, row2Dp)
+
+    val actionChipDp = if (!actionLabel.isNullOrBlank()) {
+        val actionTextDp = measureTextWidthDp(actionLabel, 11f, true)
+        val actionIconDp = 17
+        20 + actionIconDp + actionTextDp + 10
+    } else {
+        0f
+    }
+
+    val neededDp = fixedDp + textColumnDp + actionChipDp + 16
+    val percent = (neededDp / displayWidthDp.coerceAtLeast(1) * 100f).roundToInt()
+    val floor = minWidthPercent.coerceAtMost(maxWidthPercent)
+    return percent.coerceIn(floor, maxWidthPercent)
+}
+
+/**
+ * 2-row compact preview state for notifications on the dynamic island.
+ * Left: App icon / Avatar badge
+ * Center:
+ *   Row 1: Context tag (e.g. "r/androiddev • Post", "Work Account • Alex", "Duo Mobile • Login Request")
+ *   Row 2: Summary text (with lock icon if content is masked)
+ * Right: Material 3 primary action chip (e.g. Approve, Reply, Archive)
+ */
+@Composable
+private fun NotificationPreviewContent(
+    event: IslandEvent,
+    preview: NotificationPreviewOptions,
+    appearance: AppearanceSettings,
+    stackCount: Int = 1,
+    stackIndex: Int = 1,
+    onAction: (IslandAction) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        // App icon badge
+        IconBadge(event = event, badgeSize = 36.dp, iconSize = 20.dp)
+
+        // Center 2-row context and summary
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(1.dp, Alignment.CenterVertically),
+        ) {
+            val appLabel = event.appName?.takeIf { it.isNotBlank() }
+                ?: preview.contextTag?.takeIf { it.isNotBlank() }
+                ?: "Notification"
+            val compactTime = rememberCompactRelativeTime(event.postTimeMs)
+            val headerText = if (!compactTime.isNullOrBlank()) {
+                "$appLabel • $compactTime"
+            } else {
+                appLabel
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text = headerText,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (stackCount > 1) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color.White.copy(alpha = 0.15f),
+                    ) {
+                        Text(
+                            text = "$stackIndex/$stackCount",
+                            color = Color.White.copy(alpha = 0.9f),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                        )
+                    }
+                }
+            }
+            if (event.isContentMasked || preview.isContentMasked) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Lock,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.65f),
+                        modifier = Modifier.size(11.dp),
+                    )
+                    Text(
+                        text = preview.summary,
+                        color = Color.White.copy(alpha = 0.65f),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Normal,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            } else {
+                Text(
+                    text = preview.summary,
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Normal,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+
+        // Right primary action chip
+        preview.primaryAction?.let { action ->
+            val labelLower = action.label.lowercase()
+            val isApprove = labelLower.contains("approve") || labelLower.contains("accept")
+            val isReject = labelLower.contains("reject") || labelLower.contains("deny") || labelLower.contains("decline")
+            val isReply = labelLower.contains("reply")
+            val isMarkRead = labelLower.contains("read") || labelLower.contains("done")
+
+            val chipIcon = when {
+                isApprove -> Icons.Rounded.Check
+                isReject -> Icons.Rounded.Close
+                isReply -> Icons.AutoMirrored.Rounded.Send
+                isMarkRead -> Icons.Rounded.Check
+                else -> null
+            }
+
+            val chipContainer = when {
+                isApprove -> MaterialTheme.colorScheme.primary
+                isReject -> MaterialTheme.colorScheme.errorContainer
+                else -> MaterialTheme.colorScheme.secondaryContainer
+            }
+            val chipContent = when {
+                isApprove -> MaterialTheme.colorScheme.onPrimary
+                isReject -> MaterialTheme.colorScheme.onErrorContainer
+                else -> MaterialTheme.colorScheme.onSecondaryContainer
+            }
+
+            Surface(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable { onAction(action) },
+                color = chipContainer,
+                shape = RoundedCornerShape(14.dp),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    if (chipIcon != null) {
+                        Icon(
+                            imageVector = chipIcon,
+                            contentDescription = null,
+                            tint = chipContent,
+                            modifier = Modifier.size(13.dp),
+                        )
+                    }
+                    Text(
+                        text = action.label,
+                        color = chipContent,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+    }
 }
 
 /**

@@ -92,6 +92,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val statusBarPreferences = StatusBarPreferences(application)
     private val permissionDotPreferences = PermissionDotPreferences(application)
     private val volumeIntegrationPreferences = VolumeIntegrationPreferences(application)
+    private val notificationPreviewPreferences = com.ekoehler.expressivecutout.data.NotificationPreviewPreferences(application)
+
+    val notificationPreviewSettings: StateFlow<com.ekoehler.expressivecutout.data.NotificationPreviewSettings> =
+        notificationPreviewPreferences.settings.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = com.ekoehler.expressivecutout.data.NotificationPreviewSettings(),
+        )
 
     val customIcons: StateFlow<Map<SystemEventType, IconSource>> =
         preferences.customIcons.stateIn(
@@ -267,6 +275,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         JsonSettings.STATUS_BAR to statusBarPreferences,
         JsonSettings.PERMISSION_DOT to permissionDotPreferences,
         JsonSettings.VOLUME_INTEGRATION to volumeIntegrationPreferences,
+        JsonSettings.NOTIFICATION_PREVIEW to notificationPreviewPreferences,
     )
 
     /** Exports every settings store as one JSON document; see [JsonSettings.export]. */
@@ -857,6 +866,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         appearancePreferences.setPreferDynamicIconColor(enabled)
     }
 
+    fun setShowVirtualLed(enabled: Boolean) = viewModelScope.launch {
+        appearancePreferences.setShowVirtualLed(enabled)
+    }
+
     fun setStrokeWidth(widthDp: Int) = viewModelScope.launch {
         appearancePreferences.setStrokeWidth(widthDp)
     }
@@ -967,5 +980,52 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setVolumeIconContainerColor(color: CutoutColor?) = viewModelScope.launch {
         volumeIntegrationPreferences.setIconContainerColor(color)
+    }
+
+    fun setNotificationPreviewEnabled(enabled: Boolean) = viewModelScope.launch {
+        notificationPreviewPreferences.setEnabled(enabled)
+    }
+
+    fun setAllowSensitiveContentGlobally(allow: Boolean) = viewModelScope.launch {
+        notificationPreviewPreferences.setAllowSensitiveContentGlobally(allow)
+    }
+
+    fun setAutoUnfurlDynamicActions(autoUnfurl: Boolean) = viewModelScope.launch {
+        notificationPreviewPreferences.setAutoUnfurlDynamicActions(autoUnfurl)
+    }
+
+    fun setDefaultNotificationMode(mode: com.ekoehler.expressivecutout.data.NotificationMode) = viewModelScope.launch {
+        notificationPreviewPreferences.setDefaultMode(mode)
+    }
+
+    fun setSummaryEngine(engine: com.ekoehler.expressivecutout.data.SummaryEngineType) = viewModelScope.launch {
+        notificationPreviewPreferences.setSummaryEngine(engine)
+    }
+
+    fun setCloudApiKey(key: String?) = viewModelScope.launch {
+        notificationPreviewPreferences.setCloudApiKey(key)
+    }
+
+    fun setContentAllowedForApp(packageName: String, allowed: Boolean) = viewModelScope.launch {
+        notificationPreviewPreferences.setContentAllowedForApp(packageName, allowed)
+    }
+
+    fun saveAppFilterRule(rule: com.ekoehler.expressivecutout.data.AppFilterRule) = viewModelScope.launch {
+        notificationPreviewPreferences.saveAppRule(rule)
+    }
+
+    fun removeAppFilterRule(packageName: String) = viewModelScope.launch {
+        notificationPreviewPreferences.removeAppRule(packageName)
+    }
+
+    val detectedAppsAndActions: StateFlow<Map<String, List<String>>> =
+        com.ekoehler.expressivecutout.service.CutoutNotificationListenerService.detectedAppsAndActions
+
+    fun refreshDetectedNotifications() {
+        com.ekoehler.expressivecutout.service.CutoutNotificationListenerService.refreshDetectedApps()
+    }
+
+    fun setMaxStackSize(size: Int) = viewModelScope.launch {
+        notificationPreviewPreferences.setMaxStackSize(size)
     }
 }

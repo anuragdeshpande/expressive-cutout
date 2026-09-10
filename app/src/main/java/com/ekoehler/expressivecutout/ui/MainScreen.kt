@@ -67,8 +67,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
 
+import androidx.compose.material.icons.rounded.Extension
+import com.ekoehler.expressivecutout.ui.screen.IntegrationsRoute
+import com.ekoehler.expressivecutout.ui.screen.IntegrationsTab
+
 /**
- * The three top-level tabs, in the order the nav bar shows them, each carrying its own label and
+ * The four top-level tabs, in the order the nav bar shows them, each carrying its own label and
  * icon.
  */
 private enum class HomeTab(
@@ -76,6 +80,7 @@ private enum class HomeTab(
     val icon: ImageVector,
 ) {
     Settings(R.string.nav_settings, Icons.Rounded.Tune),
+    Integrations(R.string.nav_integrations, Icons.Rounded.Extension),
     Permissions(R.string.nav_permissions, Icons.Rounded.Shield),
     Profile(R.string.nav_profile, Icons.Rounded.Person),
 }
@@ -89,6 +94,7 @@ private enum class HomeTab(
 fun MainScreen(viewModel: AppViewModel = viewModel()) {
     var selectedIndex by rememberSaveable { mutableIntStateOf(0) }
     var settingsRoute by rememberSaveable { mutableStateOf(SettingsRoute.List) }
+    var integrationsRoute by rememberSaveable { mutableStateOf<IntegrationsRoute>(IntegrationsRoute.List) }
     var profileRoute by rememberSaveable { mutableStateOf(ProfileRoute.List) }
     var selectedTileName by rememberSaveable { mutableStateOf<String?>(null) }
     val selectedTile = selectedTileName?.let { name -> DynamicTile.entries.firstOrNull { it.name == name } }
@@ -103,11 +109,13 @@ fun MainScreen(viewModel: AppViewModel = viewModel()) {
 
     // On a detail screen the bottom bar becomes a back pill instead of the tab bar.
     val inSubScreen = (current == HomeTab.Settings && settingsRoute != SettingsRoute.List) ||
+        (current == HomeTab.Integrations && integrationsRoute != IntegrationsRoute.List) ||
         (current == HomeTab.Profile && profileRoute != ProfileRoute.List)
 
     val navigateBack: () -> Unit = {
         when (current) {
             HomeTab.Profile -> profileRoute = ProfileRoute.List
+            HomeTab.Integrations -> integrationsRoute = integrationsRoute.parent
             else -> settingsRoute = settingsRoute.parent
         }
     }
@@ -235,7 +243,25 @@ fun MainScreen(viewModel: AppViewModel = viewModel()) {
                             onOpenVolume = { settingsRoute = SettingsRoute.VolumeIntegration },
                         )
 
-                        HomeTab.Permissions -> PermissionsTab(contentPadding)
+                        HomeTab.Integrations -> when (val route = integrationsRoute) {
+                            IntegrationsRoute.List -> IntegrationsTab(
+                                viewModel = viewModel,
+                                contentPadding = contentPadding,
+                                onNavigate = { integrationsRoute = it },
+                            )
+                            IntegrationsRoute.NotificationPreviews -> com.ekoehler.expressivecutout.ui.screen.integrations.NotificationPreviewScreen(
+                                viewModel = viewModel,
+                                contentPadding = contentPadding,
+                                onNavigateToAppRule = { pkg -> integrationsRoute = IntegrationsRoute.AppRule(pkg) },
+                            )
+                            is IntegrationsRoute.AppRule -> com.ekoehler.expressivecutout.ui.screen.integrations.AppFilterRuleScreen(
+                                packageName = route.packageName,
+                                viewModel = viewModel,
+                                contentPadding = contentPadding,
+                            )
+                        }
+
+                        HomeTab.Permissions -> PermissionsTab(contentPadding, viewModel)
 
                         HomeTab.Profile -> ProfileTab(
                             viewModel = viewModel,
@@ -293,6 +319,11 @@ fun MainScreen(viewModel: AppViewModel = viewModel()) {
                         ProfileRoute.PermissionDetails -> stringResource(R.string.profile_permissions_title)
                         ProfileRoute.Testing -> stringResource(R.string.profile_testing_title)
                         else -> stringResource(R.string.profile_version)
+                    }
+                    HomeTab.Integrations -> when (integrationsRoute) {
+                        is IntegrationsRoute.AppRule -> stringResource(R.string.notif_preview_apps_section)
+                        IntegrationsRoute.NotificationPreviews -> stringResource(R.string.integration_notif_preview_title)
+                        else -> stringResource(R.string.integrations_title)
                     }
                     else -> when (settingsRoute) {
                         SettingsRoute.SizePosition -> stringResource(R.string.appearance_title)

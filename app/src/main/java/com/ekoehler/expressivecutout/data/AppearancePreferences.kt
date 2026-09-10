@@ -48,6 +48,7 @@ data class AppearanceSettings(
     val cancelButtonOnLeft: Boolean = DEFAULT_CANCEL_ON_LEFT,
     val sentAlignment: SentAlignment = DEFAULT_SENT_ALIGNMENT,
     val pageTransitionStyle: PageTransitionStyle = DEFAULT_PAGE_TRANSITION_STYLE,
+    val showVirtualLed: Boolean = DEFAULT_SHOW_VIRTUAL_LED,
 ) {
     companion object {
         const val DEFAULT_SHADOW_ENABLED = true
@@ -60,6 +61,7 @@ data class AppearanceSettings(
         const val DEFAULT_SHOW_TIMESTAMP = true
         const val DEFAULT_SHOW_FULL_NOTIFICATION_TEXT = true
         const val DEFAULT_PREFER_DYNAMIC_ICON_COLOR = false
+        const val DEFAULT_SHOW_VIRTUAL_LED = true
 
         /** Match the pill's historical look: near-black fill, white stroke. */
         val DEFAULT_BACKGROUND_FILL: CutoutFill = CutoutFill.Solid(ColorSpec.Fixed(0xFF0A0A0A))
@@ -130,6 +132,7 @@ class AppearancePreferences(private val context: Context) : JsonSerializable {
             pageTransitionStyle = PageTransitionStyle.entries.firstOrNull {
                 it.name == prefs[PAGE_TRANSITION_STYLE]
             } ?: AppearanceSettings.DEFAULT_PAGE_TRANSITION_STYLE,
+            showVirtualLed = prefs[SHOW_VIRTUAL_LED] ?: AppearanceSettings.DEFAULT_SHOW_VIRTUAL_LED,
         )
     }
 
@@ -159,6 +162,7 @@ class AppearancePreferences(private val context: Context) : JsonSerializable {
             put("cancelButtonOnLeft", s.cancelButtonOnLeft)
             put("sentAlignment", s.sentAlignment.name)
             put("pageTransitionStyle", s.pageTransitionStyle.name)
+            put("showVirtualLed", s.showVirtualLed)
         }.toString()
     }
 
@@ -214,6 +218,7 @@ class AppearancePreferences(private val context: Context) : JsonSerializable {
                 PageTransitionStyle.entries.firstOrNull { it.name == obj.optString("pageTransitionStyle") }
                     ?.let { style -> it[PAGE_TRANSITION_STYLE] = style.name }
             }
+            if (obj.has("showVirtualLed")) it[SHOW_VIRTUAL_LED] = obj.getBoolean("showVirtualLed")
         }
     }
 
@@ -336,6 +341,10 @@ class AppearancePreferences(private val context: Context) : JsonSerializable {
         it[PAGE_TRANSITION_STYLE] = style.name
     }
 
+    suspend fun setShowVirtualLed(enabled: Boolean) = context.appearanceDataStore.edit {
+        it[SHOW_VIRTUAL_LED] = enabled
+    }
+
     private companion object {
         val SHADOW_ENABLED = booleanPreferencesKey("shadow_enabled")
         val STROKE_ENABLED = booleanPreferencesKey("stroke_enabled")
@@ -363,5 +372,6 @@ class AppearancePreferences(private val context: Context) : JsonSerializable {
         val CANCEL_ON_LEFT = booleanPreferencesKey("cancel_button_on_left")
         val SENT_ALIGNMENT = stringPreferencesKey("sent_alignment")
         val PAGE_TRANSITION_STYLE = stringPreferencesKey("page_transition_style")
+        val SHOW_VIRTUAL_LED = booleanPreferencesKey("show_virtual_led")
     }
 }
