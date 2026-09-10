@@ -11,11 +11,14 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.drawable.Icon
 import android.os.Build
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.RemoteInput
 import androidx.core.content.ContextCompat
 import com.ekoehler.expressivecutout.R
+import com.ekoehler.expressivecutout.core.BrightnessBus
+import com.ekoehler.expressivecutout.core.BrightnessState
 import com.ekoehler.expressivecutout.core.CutoutSignal
 import com.ekoehler.expressivecutout.core.IslandEventBus
 import com.ekoehler.expressivecutout.core.SystemEventPayload
@@ -27,7 +30,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 import android.app.RemoteInput as PlatformRemoteInput
 
 /**
@@ -61,6 +66,7 @@ object TestNotifier {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var progressJob: Job? = null
     private var pairJob: Job? = null
+    private var testBrightnessJob: Job? = null
 
     /** True once a notification can actually be posted (Android 13+ gates this at runtime). */
     fun canPost(context: Context): Boolean =
@@ -439,6 +445,62 @@ object TestNotifier {
      */
     fun sendSystemEvent(payload: SystemEventPayload) {
         IslandEventBus.emit(CutoutSignal.System(payload))
+    }
+
+    /**
+     * Emits an adaptive brightness system event with real-time rolling ramp to [level].
+     */
+    fun sendBrightnessTest(context: Context, level: Int = 75) {
+        val startPercent = BrightnessBus.state.value.brightnessPercent.takeIf { it in 0..100 } ?: 30
+        IslandEventBus.emit(
+            CutoutSignal.System(
+                SystemEventPayload(
+                    type = SystemEventType.BRIGHTNESS_CHANGED,
+                    title = context.getString(R.string.event_brightness_changed),
+                    subtitle = "$startPercent%",
+                    collapsedBadgeText = "$startPercent%",
+                    actionIntentAction = Settings.ACTION_DISPLAY_SETTINGS,
+                ),
+            ),
+        )
+
+        testBrightnessJob?.cancel()
+        testBrightnessJob = scope.launch {
+            val delta = level - startPercent
+            if (delta == 0) {
+                BrightnessBus.update(BrightnessState(brightnessPercent = level, targetPercent = level, isAutoBrightness = true))
+                return@launch
+            }
+            val absDelta = kotlin.math.abs(delta)
+            val durationMs = if (delta > 0) {
+                (absDelta * 25L).coerceIn(800L, 2000L)
+            } else {
+                (absDelta * 35L).coerceIn(800L, 2800L)
+            }
+            val totalSteps = (durationMs / 50L).toInt().coerceAtLeast(1)
+            val stepDelayMs = durationMs / totalSteps
+
+            for (step in 1..totalSteps) {
+                if (!isActive) break
+                val progress = step.toFloat() / totalSteps
+                val current = (startPercent + delta * progress).roundToInt().coerceIn(0, 100)
+                BrightnessBus.update(
+                    BrightnessState(
+                        brightnessPercent = current,
+                        targetPercent = level,
+                        isAutoBrightness = true,
+                    ),
+                )
+                delay(stepDelayMs)
+            }
+            BrightnessBus.update(
+                BrightnessState(
+                    brightnessPercent = level,
+                    targetPercent = level,
+                    isAutoBrightness = true,
+                ),
+            )
+        }
     }
 
     /** A mutable broadcast [PendingIntent] to [TestReplyReceiver]; mutability lets reply text fill in. */

@@ -33,6 +33,7 @@
     <string name="event_ringer_normal">Sound on</string>
     <string name="event_ringer_vibrate">Vibrate</string>
     <string name="event_ringer_silent">Silent</string>
+    <string name="event_brightness_changed">Adaptive brightness</string>
     <string name="event_group_charging">Charging and battery</string>
     <string name="event_group_wifi">Wi-Fi</string>
     <string name="event_group_headphones">Headphones</string>
@@ -44,6 +45,7 @@
     <string name="event_group_bluetooth">Bluetooth</string>
     <string name="event_group_hotspot">Hotspot</string>
     <string name="event_group_ringer">Ringer mode</string>
+    <string name="event_group_brightness">Brightness</string>
     <string name="event_group_charging_desc">Show charging and battery changes on the island.</string>
     <string name="event_group_wifi_desc">Show when your Wi-Fi connection changes.</string>
     <string name="event_group_headphones_desc">Show when headphones connect or disconnect.</string>
@@ -55,6 +57,7 @@
     <string name="event_group_bluetooth_desc">Show Bluetooth connection changes.</string>
     <string name="event_group_hotspot_desc">Show when your hotspot turns on or off.</string>
     <string name="event_group_ringer_desc">Show changes to your ringer mode.</string>
+    <string name="event_group_brightness_desc">Show when screen brightness is automatically adjusted.</string>
 
     <!-- Dynamic tile labels shown inside the island -->
     <string name="tile_music">Music</string>
@@ -96,6 +99,7 @@
     <string name="action_send_test_multiline">Send a multi-line test notification</string>
     <string name="action_send_test_progress">Send a test progress notification</string>
     <string name="action_send_test_plain">Send a test notification without buttons</string>
+    <string name="action_send_test_brightness">Send adaptive brightness test</string>
     <string name="test_notification_title">Test notification</string>
     <string name="test_notification_text">Expand the island and try the buttons below.</string>
     <string name="test_multiline_notification_title">Multi-line message</string>

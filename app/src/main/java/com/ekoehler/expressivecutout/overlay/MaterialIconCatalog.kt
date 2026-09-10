@@ -10,6 +10,7 @@ import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BatteryAlert
 import androidx.compose.material.icons.rounded.BatteryChargingFull
 import androidx.compose.material.icons.rounded.BatteryFull
+import androidx.compose.material.icons.rounded.BrightnessAuto
 import androidx.compose.material.icons.rounded.Cake
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Call
@@ -139,6 +140,7 @@ object MaterialIconCatalog {
         MaterialIconOption("flight", Icons.Rounded.FlightTakeoff),
         MaterialIconOption("anchor", Icons.Rounded.Anchor),
         MaterialIconOption("android", Icons.Rounded.Android),
+        MaterialIconOption("brightness_auto", Icons.Rounded.BrightnessAuto),
     )
 
     private val byKey: Map<String, ImageVector> = options.associate { it.key to it.icon }

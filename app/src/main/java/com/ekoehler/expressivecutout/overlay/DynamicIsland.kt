@@ -19,6 +19,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
@@ -88,6 +89,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import com.ekoehler.expressivecutout.core.BrightnessBus
 import com.ekoehler.expressivecutout.core.VolumeBus
 import com.ekoehler.expressivecutout.service.CutoutAccessibilityService
 import androidx.compose.material3.LocalContentColor
@@ -1448,12 +1450,36 @@ private fun CollapsedContent(
                 modifier = Modifier.align(Alignment.CenterEnd),
             )
         }
-        // Trailing text (e.g. battery percentage for charging/battery low) or radiating status dot
+        // Trailing text (e.g. battery percentage, brightness, volume) or radiating status dot
         if (event.timer == null && event.progressData == null && !isStickToCamera) {
+            val trailingInt = event.trailingText?.removeSuffix("%")?.toIntOrNull()
             if (event.volume != null) {
                 val liveVolume by VolumeBus.state.collectAsStateWithLifecycle()
                 RollingCounterText(
                     value = liveVolume.mediaVolumePercent,
+                    suffix = "%",
+                    color = event.colorOverride?.resolve() ?: event.trailingTextColor ?: LocalContentColor.current,
+                    fontSize = (heightDp * 0.34f).sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = (heightDp * 0.20f).dp),
+                )
+            } else if (event.actionIntentAction == android.provider.Settings.ACTION_DISPLAY_SETTINGS) {
+                val liveBrightness by BrightnessBus.state.collectAsStateWithLifecycle()
+                RollingCounterText(
+                    value = liveBrightness.brightnessPercent,
+                    suffix = "%",
+                    color = event.colorOverride?.resolve() ?: event.trailingTextColor ?: LocalContentColor.current,
+                    fontSize = (heightDp * 0.34f).sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = (heightDp * 0.20f).dp),
+                )
+            } else if (trailingInt != null && event.trailingText.endsWith("%")) {
+                RollingCounterText(
+                    value = trailingInt,
                     suffix = "%",
                     color = event.colorOverride?.resolve() ?: event.trailingTextColor ?: LocalContentColor.current,
                     fontSize = (heightDp * 0.34f).sp,
@@ -3835,30 +3861,30 @@ private fun RollingDigit(
         transitionSpec = {
             if (direction >= 0) {
                 (slideInVertically(
-                    animationSpec = spring(
-                        dampingRatio = 0.8f,
-                        stiffness = Spring.StiffnessMedium,
+                    animationSpec = tween(
+                        durationMillis = 90,
+                        easing = FastOutSlowInEasing,
                     ),
-                ) { -(it * 0.35f).roundToInt() } + fadeIn(tween(120))) togetherWith
+                ) { -(it * 0.45f).roundToInt() } + fadeIn(tween(70))) togetherWith
                     (slideOutVertically(
-                        animationSpec = spring(
-                            dampingRatio = 0.8f,
-                            stiffness = Spring.StiffnessMedium,
+                        animationSpec = tween(
+                            durationMillis = 90,
+                            easing = FastOutSlowInEasing,
                         ),
-                    ) { (it * 0.35f).roundToInt() } + fadeOut(tween(120)))
+                    ) { (it * 0.45f).roundToInt() } + fadeOut(tween(70)))
             } else {
                 (slideInVertically(
-                    animationSpec = spring(
-                        dampingRatio = 0.8f,
-                        stiffness = Spring.StiffnessMedium,
+                    animationSpec = tween(
+                        durationMillis = 90,
+                        easing = FastOutSlowInEasing,
                     ),
-                ) { (it * 0.35f).roundToInt() } + fadeIn(tween(120))) togetherWith
+                ) { (it * 0.45f).roundToInt() } + fadeIn(tween(70))) togetherWith
                     (slideOutVertically(
-                        animationSpec = spring(
-                            dampingRatio = 0.8f,
-                            stiffness = Spring.StiffnessMedium,
+                        animationSpec = tween(
+                            durationMillis = 90,
+                            easing = FastOutSlowInEasing,
                         ),
-                    ) { -(it * 0.35f).roundToInt() } + fadeOut(tween(120)))
+                    ) { -(it * 0.45f).roundToInt() } + fadeOut(tween(70)))
             }
         },
         label = "rollingDigit",

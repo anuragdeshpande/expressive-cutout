@@ -540,4 +540,11 @@ private fun previewPayloadFor(context: Context, type: SystemEventType): SystemEv
         subtitle = "Calls and alerts muted",
         actionIntentAction = Settings.ACTION_SOUND_SETTINGS,
     )
+    SystemEventType.BRIGHTNESS_CHANGED -> SystemEventPayload(
+        type = type,
+        title = context.getString(R.string.event_brightness_changed),
+        subtitle = "75%",
+        collapsedBadgeText = "75%",
+        actionIntentAction = Settings.ACTION_DISPLAY_SETTINGS,
+    )
 }

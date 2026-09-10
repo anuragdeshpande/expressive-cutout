@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Subject
+import androidx.compose.material.icons.rounded.BrightnessAuto
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Downloading
 import androidx.compose.material.icons.rounded.Layers
@@ -129,6 +130,12 @@ fun TestingScreen(contentPadding: PaddingValues) {
                 icon = Icons.Rounded.PhoneCallback,
                 title = stringResource(R.string.action_send_test_incoming_call),
                 onClick = { TestCaller.toggle(context, TestCaller.Kind.INCOMING) },
+            )
+
+            TestCard(
+                icon = Icons.Rounded.BrightnessAuto,
+                title = stringResource(R.string.action_send_test_brightness),
+                onClick = { TestNotifier.sendBrightnessTest(context) },
             )
         }
     }

@@ -37,6 +37,7 @@ import com.ekoehler.expressivecutout.R
 import com.ekoehler.expressivecutout.core.CenterShortcutExecutor
 import com.ekoehler.expressivecutout.core.CutoutMetrics
 import com.ekoehler.expressivecutout.core.CutoutSignal
+import com.ekoehler.expressivecutout.core.BrightnessBus
 import com.ekoehler.expressivecutout.core.DynamicTile
 import com.ekoehler.expressivecutout.core.IslandEventBus
 import com.ekoehler.expressivecutout.core.IslandPreviewBus
@@ -368,6 +369,7 @@ class IslandOverlayController(private val context: Context) {
         observeAssistantSettings()
         observeVolumeSettings()
         observeVolumeState()
+        observeBrightnessState()
         observeNowPlaying()
         observeForegroundApp()
         observeOnCall()
@@ -886,6 +888,27 @@ class IslandOverlayController(private val context: Context) {
                     preferDynamicIconColor = appearanceState.value.preferDynamicIconColor,
                 ).copy(id = event.id, initiallyExpanded = expanded)
                 currentEvent.value = updated
+            }
+        }
+    }
+
+    /**
+     * Follows live brightness state updates so an active brightness cutout animates its displayed percentage
+     * in real time as the screen backlight adapts.
+     */
+    private fun observeBrightnessState() = scope.launch {
+        BrightnessBus.state.collect { brightnessState ->
+            val event = currentEvent.value
+            if (currentSystemEventType == SystemEventType.BRIGHTNESS_CHANGED && event != null) {
+                currentEvent.value = event.copy(
+                    detail = "${brightnessState.brightnessPercent}%",
+                    trailingText = "${brightnessState.brightnessPercent}%",
+                )
+                if (brightnessState.brightnessPercent == brightnessState.targetPercent) {
+                    scheduleDismiss()
+                } else {
+                    dismissJob?.cancel()
+                }
             }
         }
     }

@@ -564,7 +564,8 @@ class IconResolver(private val context: Context) {
         fun statusDotColorFor(type: SystemEventType): Color? = when (type) {
             SystemEventType.CHARGING_STARTED,
             SystemEventType.CHARGING_COMPLETE,
-            SystemEventType.BATTERY_LOW -> null
+            SystemEventType.BATTERY_LOW,
+            SystemEventType.BRIGHTNESS_CHANGED -> null
             SystemEventType.WIFI_CONNECTED,
             SystemEventType.HEADPHONES_CONNECTED,
             SystemEventType.USB_MOUNTED,

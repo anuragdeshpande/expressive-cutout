@@ -11,6 +11,7 @@ import androidx.compose.material.icons.rounded.BatteryChargingFull
 import androidx.compose.material.icons.rounded.BatteryFull
 import androidx.compose.material.icons.rounded.BluetoothConnected
 import androidx.compose.material.icons.rounded.BluetoothDisabled
+import androidx.compose.material.icons.rounded.BrightnessAuto
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.HeadsetOff
 import androidx.compose.material.icons.rounded.Lock
@@ -197,4 +198,5 @@ enum class SystemEventType(
     RINGER_NORMAL(Icons.Rounded.VolumeUp, R.string.event_ringer_normal, 0xFF4ADE80),
     RINGER_VIBRATE(Icons.Rounded.Vibration, R.string.event_ringer_vibrate, 0xFFFACC15),
     RINGER_SILENT(Icons.Rounded.VolumeOff, R.string.event_ringer_silent, 0xFFF87171),
+    BRIGHTNESS_CHANGED(Icons.Rounded.BrightnessAuto, R.string.event_brightness_changed, 0xFFFACC15),
 }

@@ -58,6 +58,9 @@ enum class SystemEventFamily(
         SystemEventType.RINGER_VIBRATE,
         SystemEventType.RINGER_SILENT,
     )),
+    BRIGHTNESS(R.string.event_group_brightness, R.string.event_group_brightness_desc, listOf(
+        SystemEventType.BRIGHTNESS_CHANGED,
+    )),
 }
 
 /**

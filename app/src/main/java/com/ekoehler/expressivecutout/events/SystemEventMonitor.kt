@@ -26,6 +26,9 @@ import android.provider.Settings
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import com.ekoehler.expressivecutout.R
+import com.ekoehler.expressivecutout.core.BrightnessBus
+import com.ekoehler.expressivecutout.core.BrightnessState
+import com.ekoehler.expressivecutout.core.BrightnessTranslation
 import com.ekoehler.expressivecutout.core.CutoutSignal
 import com.ekoehler.expressivecutout.core.IslandEventBus
 import com.ekoehler.expressivecutout.core.SystemEventPayload
@@ -38,6 +41,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 /**
  * Listens for device-level events and republishes each as a rich [CutoutSignal.System]
@@ -71,11 +75,21 @@ class SystemEventMonitor(
     @Volatile
     private var lastRingerMode = -1
 
+    @Volatile
+    private var lastBrightnessPercent = -1
+
     private var lockPollingJob: Job? = null
+    private var brightnessRampJob: Job? = null
 
     private val adbWifiObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
         override fun onChange(selfChange: Boolean) {
             checkWirelessAdbState()
+        }
+    }
+
+    private val brightnessObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean) {
+            handleBrightnessChanged()
         }
     }
 
@@ -406,6 +420,30 @@ class SystemEventMonitor(
             context.contentResolver.registerContentObserver(uri, false, adbWifiObserver)
         }
 
+        runCatching {
+            val initial = getBrightnessPercentage(context).coerceIn(0, 100)
+            lastBrightnessPercent = initial
+            BrightnessBus.update(
+                BrightnessState(
+                    brightnessPercent = initial,
+                    targetPercent = initial,
+                    isAutoBrightness = isAutoBrightnessEnabled(),
+                ),
+            )
+            val brightnessUri = Settings.System.getUriFor(Settings.System.SCREEN_BRIGHTNESS)
+            if (brightnessUri != null) {
+                context.contentResolver.registerContentObserver(brightnessUri, false, brightnessObserver)
+            }
+            val modeUri = Settings.System.getUriFor(Settings.System.SCREEN_BRIGHTNESS_MODE)
+            if (modeUri != null) {
+                context.contentResolver.registerContentObserver(modeUri, false, brightnessObserver)
+            }
+            val floatUri = Settings.System.getUriFor(KEY_SCREEN_BRIGHTNESS_FLOAT)
+            if (floatUri != null) {
+                context.contentResolver.registerContentObserver(floatUri, false, brightnessObserver)
+            }
+        }
+
         if (keyguardManager?.isDeviceLocked == true) {
             isDeviceCurrentlyLocked = true
             startLockPolling()
@@ -420,9 +458,12 @@ class SystemEventMonitor(
      */
     fun stop() {
         stopLockPolling()
+        brightnessRampJob?.cancel()
+        brightnessRampJob = null
         scope.cancel()
         runCatching { context.unregisterReceiver(broadcastReceiver) }
         runCatching { context.contentResolver.unregisterContentObserver(adbWifiObserver) }
+        runCatching { context.contentResolver.unregisterContentObserver(brightnessObserver) }
         audioManager?.unregisterAudioDeviceCallback(audioDeviceCallback)
         connectivityManager?.unregisterNetworkCallback(wifiCallback)
         connectivityManager?.unregisterNetworkCallback(vpnCallback)
@@ -693,6 +734,102 @@ class SystemEventMonitor(
     }
 
     /**
+     * Handles brightness and brightness-mode changes, emitting [SystemEventType.BRIGHTNESS_CHANGED]
+     * and smoothly animating [BrightnessBus] in real time as the screen backlight adapts.
+     */
+    private fun handleBrightnessChanged() {
+        val autoEnabled = isAutoBrightnessEnabled()
+        val targetPercent = getBrightnessPercentage(context)
+
+        // Only emit when automatic / adaptive brightness is active and the calculated level changed
+        if (autoEnabled && targetPercent in 0..100 && targetPercent != lastBrightnessPercent) {
+            val startPercent = BrightnessBus.state.value.brightnessPercent.takeIf { it in 0..100 }
+                ?: lastBrightnessPercent.coerceIn(0, 100)
+            lastBrightnessPercent = targetPercent
+            emit(
+                SystemEventPayload(
+                    type = SystemEventType.BRIGHTNESS_CHANGED,
+                    title = context.getString(R.string.event_brightness_changed),
+                    subtitle = "$startPercent%",
+                    collapsedBadgeText = "$startPercent%",
+                    actionIntentAction = Settings.ACTION_DISPLAY_SETTINGS,
+                ),
+            )
+
+            brightnessRampJob?.cancel()
+            brightnessRampJob = scope.launch {
+                val delta = targetPercent - startPercent
+                if (delta == 0) {
+                    BrightnessBus.update(
+                        BrightnessState(
+                            brightnessPercent = targetPercent,
+                            targetPercent = targetPercent,
+                            isAutoBrightness = true,
+                        ),
+                    )
+                    return@launch
+                }
+
+                val absDelta = kotlin.math.abs(delta)
+                val durationMs = if (delta > 0) {
+                    (absDelta * BRIGHTNESS_RAMP_UP_MS_PER_PERCENT).coerceIn(BRIGHTNESS_RAMP_MIN_MS, BRIGHTNESS_RAMP_MAX_UP_MS)
+                } else {
+                    (absDelta * BRIGHTNESS_RAMP_DOWN_MS_PER_PERCENT).coerceIn(BRIGHTNESS_RAMP_MIN_MS, BRIGHTNESS_RAMP_MAX_DOWN_MS)
+                }
+                val totalSteps = (durationMs / BRIGHTNESS_STEP_INTERVAL_MS).toInt().coerceAtLeast(1)
+                val stepDelayMs = durationMs / totalSteps
+
+                for (step in 1..totalSteps) {
+                    if (!isActive) break
+                    val progress = step.toFloat() / totalSteps
+                    val current = (startPercent + delta * progress).roundToInt().coerceIn(0, 100)
+                    BrightnessBus.update(
+                        BrightnessState(
+                            brightnessPercent = current,
+                            targetPercent = targetPercent,
+                            isAutoBrightness = true,
+                        ),
+                    )
+                    delay(stepDelayMs)
+                }
+
+                BrightnessBus.update(
+                    BrightnessState(
+                        brightnessPercent = targetPercent,
+                        targetPercent = targetPercent,
+                        isAutoBrightness = true,
+                    ),
+                )
+            }
+        } else if (targetPercent in 0..100) {
+            lastBrightnessPercent = targetPercent
+        }
+    }
+
+    /** Returns whether adaptive / automatic brightness mode is currently active. */
+    private fun isAutoBrightnessEnabled(): Boolean = runCatching {
+        Settings.System.getInt(
+            context.contentResolver,
+            Settings.System.SCREEN_BRIGHTNESS_MODE,
+            Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL,
+        ) == Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC
+    }.getOrDefault(false)
+
+    /** Reads the current screen brightness percentage (0..100) across float and integer system settings. */
+    private fun getBrightnessPercentage(context: Context): Int = runCatching {
+        val cr = context.contentResolver
+        val floatVal = Settings.System.getFloat(cr, KEY_SCREEN_BRIGHTNESS_FLOAT, -1f)
+        if (floatVal in 0f..1f) {
+            return BrightnessTranslation.linearToPercent(floatVal)
+        }
+        val intVal = Settings.System.getInt(cr, Settings.System.SCREEN_BRIGHTNESS, -1)
+        if (intVal in 0..255) {
+            return BrightnessTranslation.rawIntToPercent(intVal)
+        }
+        -1
+    }.getOrDefault(-1)
+
+    /**
      * The set of system broadcasts the pill reacts to, kept in one place so [start] and the
      * manifest can't drift apart.
      */
@@ -724,7 +861,14 @@ class SystemEventMonitor(
 
     private companion object {
         const val LOCK_POLL_INTERVAL_MS = 150L
+        const val BRIGHTNESS_RAMP_MIN_MS = 800L
+        const val BRIGHTNESS_RAMP_MAX_UP_MS = 2000L
+        const val BRIGHTNESS_RAMP_MAX_DOWN_MS = 2800L
+        const val BRIGHTNESS_RAMP_UP_MS_PER_PERCENT = 25L
+        const val BRIGHTNESS_RAMP_DOWN_MS_PER_PERCENT = 35L
+        const val BRIGHTNESS_STEP_INTERVAL_MS = 50L
         const val GLOBAL_ADB_WIFI_ENABLED = "adb_wifi_enabled"
+        const val KEY_SCREEN_BRIGHTNESS_FLOAT = "screen_brightness_float"
         const val ACTION_USB_STATE = "android.hardware.usb.action.USB_STATE"
         const val ACTION_WIFI_AP_STATE_CHANGED = "android.net.wifi.WIFI_AP_STATE_CHANGED"
         const val EXTRA_CONNECTED = "connected"

@@ -373,13 +373,15 @@ private fun EventFamilySheet(
                     .padding(horizontal = 24.dp)
                     .padding(bottom = 8.dp),
             )
-            ExpressivePillRow(
-                options = family.members.map { stringResource(it.tabLabelRes) },
-                selectedIndex = pagerState.currentPage,
-                onSelect = { index -> scope.launch { pagerState.animateScrollToPage(index) } },
-                modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 24.dp),
-            )
+            if (family.members.size > 1) {
+                ExpressivePillRow(
+                    options = family.members.map { stringResource(it.tabLabelRes) },
+                    selectedIndex = pagerState.currentPage,
+                    onSelect = { index -> scope.launch { pagerState.animateScrollToPage(index) } },
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 24.dp),
+                )
+            }
             HorizontalPager(
                 state = pagerState,
                 contentPadding = PaddingValues(horizontal = 16.dp),
