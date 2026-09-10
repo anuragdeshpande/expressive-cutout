@@ -10,6 +10,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -24,12 +25,12 @@ import com.ekoehler.expressivecutout.ui.pageTransition
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /** The screens reachable from the Integrations tab. */
-enum class IntegrationsRoute { List, EventIcons, EventDetail }
+enum class IntegrationsRoute { List, EventIcons, EventDetail, VolumeIntegration }
 
 /** The screen that back navigation returns to from an integrations sub-screen. */
 val IntegrationsRoute.parent: IntegrationsRoute
     get() = when (this) {
-        IntegrationsRoute.EventDetail -> IntegrationsRoute.EventIcons
+        IntegrationsRoute.EventDetail, IntegrationsRoute.VolumeIntegration -> IntegrationsRoute.EventIcons
         else -> IntegrationsRoute.List
     }
 
@@ -38,7 +39,7 @@ val IntegrationsRoute.depth: Int
     get() = when (this) {
         IntegrationsRoute.List -> 0
         IntegrationsRoute.EventIcons -> 1
-        IntegrationsRoute.EventDetail -> 2
+        IntegrationsRoute.EventDetail, IntegrationsRoute.VolumeIntegration -> 2
     }
 
 /**
@@ -52,6 +53,7 @@ fun IntegrationsTab(
     selectedEvent: SystemEventType?,
     onOpenEventIcons: () -> Unit,
     onOpenEvent: (SystemEventType) -> Unit,
+    onOpenVolumeIntegration: () -> Unit,
 ) {
     val appearance by viewModel.appearance.collectAsStateWithLifecycle()
     AnimatedContent(
@@ -68,9 +70,16 @@ fun IntegrationsTab(
                 contentPadding = contentPadding,
                 onOpenEventIcons = onOpenEventIcons,
             )
-            IntegrationsRoute.EventIcons -> EventIconsScreen(viewModel, contentPadding, onOpenEvent)
+            IntegrationsRoute.EventIcons -> EventIconsScreen(
+                viewModel = viewModel,
+                contentPadding = contentPadding,
+                onOpenEvent = onOpenEvent,
+                onOpenVolume = onOpenVolumeIntegration,
+            )
             IntegrationsRoute.EventDetail ->
                 selectedEvent?.let { EventDetailScreen(it, viewModel, contentPadding) }
+            IntegrationsRoute.VolumeIntegration ->
+                VolumeIntegrationScreen(viewModel, contentPadding)
         }
     }
 }

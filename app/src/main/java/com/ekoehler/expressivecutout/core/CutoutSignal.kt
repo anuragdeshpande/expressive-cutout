@@ -155,6 +155,11 @@ sealed interface CutoutSignal {
         val contentIntent: PendingIntent? = null,
         val active: Boolean = true,
     ) : CutoutSignal
+
+    /** Audio volume adjustment or ringer mode change event. */
+    data class Volume(
+        val volumeState: VolumeState,
+    ) : CutoutSignal
 }
 
 /**

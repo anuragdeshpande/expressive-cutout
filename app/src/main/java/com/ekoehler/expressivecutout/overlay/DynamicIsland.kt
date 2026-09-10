@@ -3,11 +3,22 @@ package com.ekoehler.expressivecutout.overlay
 import android.graphics.drawable.AdaptiveIconDrawable
 import android.os.Build
 import android.os.SystemClock
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.AnimationVector1D
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
@@ -22,6 +33,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -33,6 +45,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -51,20 +64,32 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import android.media.AudioManager
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.automirrored.rounded.VolumeOff
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.CallEnd
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.ClosedCaption
+import androidx.compose.material.icons.rounded.ClosedCaptionOff
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import com.ekoehler.expressivecutout.core.VolumeBus
+import com.ekoehler.expressivecutout.service.CutoutAccessibilityService
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -77,6 +102,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -84,6 +110,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -115,6 +142,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp as lerpDp
 import com.ekoehler.expressivecutout.core.DynamicTile
@@ -528,6 +556,7 @@ fun DynamicIsland(
     }
 
     var assistantContentHeightDp by remember(shownEvent?.assistant != null) { mutableStateOf(0) }
+    var volumeContentHeightDp by remember(shownEvent?.id) { mutableStateOf(0) }
     var expandedNotificationHeightDp by remember(shownEvent?.id) { mutableStateOf(0) }
     var centerContentHeightDp by remember { mutableStateOf(0) }
     val screenHeightDp = LocalConfiguration.current.screenHeightDp
@@ -547,7 +576,7 @@ fun DynamicIsland(
         expanded.widthPercent,
     ) {
         val e = shownEvent ?: return@remember 0
-        if (e.media != null || e.timer != null || e.call != null || e.assistant != null) return@remember 0
+        if (e.media != null || e.timer != null || e.call != null || e.assistant != null || e.volume != null) return@remember 0
 
         val availableWidthDp = displayWidthDp * expanded.widthPercent / 100 - 36
         val textWidthDp = maxOf(100, availableWidthDp - 44 - 14)
@@ -586,6 +615,16 @@ fun DynamicIsland(
         contentRowHeightDp + actionsHeightDp
     }
 
+    val volumePrecomputedHeightDp = remember(
+        shownEvent?.volume?.showRingerModes,
+        shownEvent?.volume?.showLiveCaption,
+        expanded.topMarginDp,
+    ) {
+        val volumeOpts = shownEvent?.volume ?: return@remember 0
+        val hasModes = volumeOpts.showRingerModes || volumeOpts.showLiveCaption
+        expanded.topMarginDp + (if (hasModes) 178 else 124)
+    }
+
     val heightBonus = when {
         emptyPill && isExpanded -> {
             if (centerContentHeightDp > 0) {
@@ -600,6 +639,10 @@ fun DynamicIsland(
             val fitHeightDp = if (assistantContentHeightDp > 0) assistantContentHeightDp else 110
             val targetHeightDp = fitHeightDp.coerceIn(110, maxCutoutHeightDp)
             (targetHeightDp - dims.heightDp)
+        }
+        isExpanded && shownEvent?.volume != null -> {
+            val targetHeightDp = maxOf(volumePrecomputedHeightDp, volumeContentHeightDp)
+            targetHeightDp - dims.heightDp
         }
         isExpanded && shownEvent?.media != null -> {
             val controlsExtra = if (hasMediaControls) expandedActionsExtraDp(appearance.actionButtonHeightDp) else 0
@@ -659,7 +702,7 @@ fun DynamicIsland(
 
     val spec: AnimationSpec<Dp> = if (reveal.value == 0f || snapGeometry) snap() else motion.dp()
     val isAssistantAnswer = isExpanded && shownEvent?.assistant?.displayAnswerInCutout == true
-    val isDynamicHeight = isAssistantAnswer || (isExpanded && (precomputedNotificationHeightDp > 0 || expandedNotificationHeightDp > 0))
+    val isDynamicHeight = isAssistantAnswer || shownEvent?.volume != null || (isExpanded && (precomputedNotificationHeightDp > 0 || expandedNotificationHeightDp > 0))
     val heightSpec: AnimationSpec<Dp> = when {
         reveal.value == 0f || snapGeometry -> snap()
         isDynamicHeight -> motion.dpSmooth()
@@ -1017,6 +1060,7 @@ fun DynamicIsland(
                                         onDismiss = onDismiss,
                                         onHeightMeasured = { hDp ->
                                             if (e.assistant != null) assistantContentHeightDp = hDp
+                                            else if (e.volume != null) volumeContentHeightDp = hDp
                                             else expandedNotificationHeightDp = hDp
                                         },
                                     )
@@ -1349,7 +1393,19 @@ private fun CollapsedContent(
         }
         // Trailing text (e.g. battery percentage for charging/battery low) or radiating status dot
         if (event.timer == null && event.progressData == null && !isStickToCamera) {
-            if (event.trailingText != null) {
+            if (event.volume != null) {
+                val liveVolume by VolumeBus.state.collectAsStateWithLifecycle()
+                RollingCounterText(
+                    value = liveVolume.mediaVolumePercent,
+                    suffix = "%",
+                    color = event.colorOverride?.resolve() ?: event.trailingTextColor ?: LocalContentColor.current,
+                    fontSize = (heightDp * 0.34f).sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = (heightDp * 0.20f).dp),
+                )
+            } else if (event.trailingText != null) {
                 Text(
                     text = event.trailingText,
                     color = event.colorOverride?.resolve() ?: event.trailingTextColor ?: LocalContentColor.current,
@@ -1952,6 +2008,18 @@ private fun ExpandedContent(
             showActions = showActions,
             appearance = appearance,
             collapsedHeightDp = topMarginDp,
+            onDismiss = onDismiss,
+            onHeightMeasured = onHeightMeasured,
+        )
+        return
+    }
+    // The volume overlay integration: interactive media slider, ringer mode switcher, live captions.
+    if (event.volume != null) {
+        VolumeExpandedContent(
+            event = event,
+            topMarginDp = topMarginDp,
+            targetWidthDp = targetWidthDp,
+            expandProgress = expandProgress,
             onDismiss = onDismiss,
             onHeightMeasured = onHeightMeasured,
         )
@@ -3490,6 +3558,507 @@ private fun AssistantExpandedContent(
                         heightDp = appearance.actionButtonHeightDp,
                         onClick = onDismiss,
                         modifier = if (full) Modifier.weight(1f) else Modifier,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The expanded volume integration card: interactive media volume slider, mode chips (Silent,
+ * Vibrate, Ringer, Live Caption), and quick launcher for the system volume panel.
+ */
+@Composable
+private fun VolumeExpandedContent(
+    event: IslandEvent,
+    topMarginDp: Int = IslandDimensions.DEFAULT_TOP_MARGIN_DP,
+    targetWidthDp: Int = 0,
+    expandProgress: Float = 1f,
+    onDismiss: () -> Unit = {},
+    onHeightMeasured: ((Int) -> Unit)? = null,
+) {
+    val density = LocalDensity.current
+    val liveVolume by VolumeBus.state.collectAsStateWithLifecycle()
+    val volumeOpts = event.volume ?: return
+    val state = liveVolume
+    val haptic = LocalHapticFeedback.current
+    val context = LocalContext.current
+
+    val contentAlpha = if (expandProgress >= 1f) 1f else ((expandProgress - 0.25f) / 0.75f).coerceIn(0f, 1f)
+    val contentWidthModifier = if (targetWidthDp > 36) {
+        Modifier.width((targetWidthDp - 36).dp)
+    } else {
+        Modifier.fillMaxWidth()
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 18.dp)
+            .graphicsLayer { alpha = contentAlpha },
+    ) {
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .then(contentWidthModifier)
+                .wrapContentHeight(unbounded = true, align = Alignment.Top)
+                .padding(top = topMarginDp.dp, bottom = 18.dp)
+                .onGloballyPositioned { coordinates ->
+                    val hDp = with(density) { coordinates.size.height.toDp().value.roundToInt() }
+                    if (hDp > 0) onHeightMeasured?.invoke(hDp)
+                },
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            // Header row with title, live percentage, and settings launcher button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    IconBadge(event = event, badgeSize = 36.dp, iconSize = 20.dp)
+                    Column {
+                        Text(
+                            text = stringResource(R.string.integration_volume_title),
+                            color = LocalContentColor.current,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        RollingCounterText(
+                            value = state.mediaVolumePercent,
+                            suffix = "%",
+                            color = LocalContentColor.current.copy(alpha = 0.70f),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                }
+
+                // Volume panel settings intent button
+                IconButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        CutoutAccessibilityService.openVolumePanel(context)
+                        onDismiss()
+                    },
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Tune,
+                        contentDescription = stringResource(R.string.integration_volume_panel_desc),
+                        tint = LocalContentColor.current.copy(alpha = 0.85f),
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
+
+            // Media volume slider row
+            VolumeSliderRow(
+                volumePercent = state.mediaVolumePercent,
+                onVolumeChange = { percent ->
+                    CutoutAccessibilityService.setMediaVolumePercent(percent, fallbackContext = context)
+                },
+            )
+
+            // Ringer modes and Live Caption selection row
+            if (volumeOpts.showRingerModes || volumeOpts.showLiveCaption) {
+                VolumeModesRow(
+                    showRingerModes = volumeOpts.showRingerModes,
+                    showLiveCaption = volumeOpts.showLiveCaption,
+                    currentRingerMode = state.ringerMode,
+                    isLiveCaptionEnabled = state.isLiveCaptionEnabled,
+                    onSelectRingerMode = { mode ->
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        CutoutAccessibilityService.setRingerMode(mode, fallbackContext = context)
+                    },
+                    onToggleLiveCaption = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        CutoutAccessibilityService.toggleLiveCaption(fallbackContext = context)
+                    },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Renders an animated rolling counter that independently rolls each changing digit,
+ * sliding in from top/bottom with smooth fade effects while unchanged digits stay in place.
+ */
+@Composable
+private fun RollingCounterText(
+    value: Int,
+    suffix: String = "%",
+    color: Color = LocalContentColor.current,
+    fontSize: TextUnit,
+    fontWeight: FontWeight = FontWeight.SemiBold,
+    modifier: Modifier = Modifier,
+) {
+    var previousValue by remember { mutableIntStateOf(value) }
+    val direction = when {
+        value > previousValue -> 1
+        value < previousValue -> -1
+        else -> 1
+    }
+    LaunchedEffect(value) {
+        previousValue = value
+    }
+
+    val clamped = value.coerceIn(0, 100)
+    val hundreds = clamped / 100
+    val tens = (clamped / 10) % 10
+    val units = clamped % 10
+
+    Row(
+        modifier = modifier.clipToBounds(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AnimatedVisibility(
+            visible = clamped >= 100,
+            enter = fadeIn(tween(150)) + expandHorizontally(),
+            exit = fadeOut(tween(150)) + shrinkHorizontally(),
+        ) {
+            RollingDigit(
+                digit = hundreds.digitToChar(),
+                direction = direction,
+                color = color,
+                fontSize = fontSize,
+                fontWeight = fontWeight,
+            )
+        }
+
+        AnimatedVisibility(
+            visible = clamped >= 10,
+            enter = fadeIn(tween(150)) + expandHorizontally(),
+            exit = fadeOut(tween(150)) + shrinkHorizontally(),
+        ) {
+            RollingDigit(
+                digit = tens.digitToChar(),
+                direction = direction,
+                color = color,
+                fontSize = fontSize,
+                fontWeight = fontWeight,
+            )
+        }
+
+        RollingDigit(
+            digit = units.digitToChar(),
+            direction = direction,
+            color = color,
+            fontSize = fontSize,
+            fontWeight = fontWeight,
+        )
+
+        if (suffix.isNotEmpty()) {
+            Text(
+                text = suffix,
+                color = color,
+                fontSize = fontSize,
+                fontWeight = fontWeight,
+                maxLines = 1,
+                overflow = TextOverflow.Clip,
+            )
+        }
+    }
+}
+
+/**
+ * Animates a single digit character vertically with fade-in and fade-out effects when it changes.
+ */
+@Composable
+private fun RollingDigit(
+    digit: Char,
+    direction: Int,
+    color: Color,
+    fontSize: TextUnit,
+    fontWeight: FontWeight,
+) {
+    AnimatedContent(
+        targetState = digit,
+        modifier = Modifier.clipToBounds(),
+        transitionSpec = {
+            if (direction >= 0) {
+                (slideInVertically(
+                    animationSpec = spring(
+                        dampingRatio = 0.8f,
+                        stiffness = Spring.StiffnessMedium,
+                    ),
+                ) { -(it * 0.35f).roundToInt() } + fadeIn(tween(120))) togetherWith
+                    (slideOutVertically(
+                        animationSpec = spring(
+                            dampingRatio = 0.8f,
+                            stiffness = Spring.StiffnessMedium,
+                        ),
+                    ) { (it * 0.35f).roundToInt() } + fadeOut(tween(120)))
+            } else {
+                (slideInVertically(
+                    animationSpec = spring(
+                        dampingRatio = 0.8f,
+                        stiffness = Spring.StiffnessMedium,
+                    ),
+                ) { (it * 0.35f).roundToInt() } + fadeIn(tween(120))) togetherWith
+                    (slideOutVertically(
+                        animationSpec = spring(
+                            dampingRatio = 0.8f,
+                            stiffness = Spring.StiffnessMedium,
+                        ),
+                    ) { -(it * 0.35f).roundToInt() } + fadeOut(tween(120)))
+            }
+        },
+        label = "rollingDigit",
+    ) { d ->
+        Text(
+            text = d.toString(),
+            color = color,
+            fontSize = fontSize,
+            fontWeight = fontWeight,
+            maxLines = 1,
+            overflow = TextOverflow.Clip,
+        )
+    }
+}
+
+/**
+ * Interactive media volume slider with music icon on the leading edge and percentage on the trailing edge.
+ */
+@Composable
+private fun VolumeSliderRow(
+    volumePercent: Int,
+    onVolumeChange: (Int) -> Unit,
+) {
+    var isDragging by remember { mutableStateOf(false) }
+    var dragValue by remember { mutableFloatStateOf(volumePercent.toFloat()) }
+    val animatedValue by animateFloatAsState(
+        targetValue = if (isDragging) dragValue else volumePercent.toFloat(),
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow),
+        label = "volumeSliderValue",
+    )
+    val displayPercent = (if (isDragging) dragValue else animatedValue).roundToInt().coerceIn(0, 100)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(LocalContentColor.current.copy(alpha = 0.08f))
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        // Leading media glyph
+        Icon(
+            imageVector = if (displayPercent == 0) Icons.AutoMirrored.Rounded.VolumeOff else Icons.Rounded.MusicNote,
+            contentDescription = null,
+            tint = LocalContentColor.current.copy(alpha = 0.75f),
+            modifier = Modifier.size(20.dp),
+        )
+
+        // Volume slider
+        Slider(
+            value = if (isDragging) dragValue else animatedValue,
+            onValueChange = { newValue ->
+                isDragging = true
+                dragValue = newValue
+                onVolumeChange(newValue.roundToInt())
+            },
+            onValueChangeFinished = {
+                isDragging = false
+            },
+            valueRange = 0f..100f,
+            modifier = Modifier.weight(1f),
+            colors = SliderDefaults.colors(
+                thumbColor = MaterialTheme.colorScheme.primary,
+                activeTrackColor = MaterialTheme.colorScheme.primary,
+                inactiveTrackColor = LocalContentColor.current.copy(alpha = 0.16f),
+            ),
+        )
+
+        // Trailing percentage text
+        RollingCounterText(
+            value = displayPercent,
+            suffix = "%",
+            color = LocalContentColor.current.copy(alpha = 0.85f),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.widthIn(min = 34.dp),
+        )
+    }
+}
+
+/**
+ * The row containing the minimal segmented ringer switcher pill and optional Live Caption toggle.
+ */
+@Composable
+private fun VolumeModesRow(
+    showRingerModes: Boolean,
+    showLiveCaption: Boolean,
+    currentRingerMode: Int,
+    isLiveCaptionEnabled: Boolean,
+    onSelectRingerMode: (Int) -> Unit,
+    onToggleLiveCaption: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (showRingerModes) {
+            RingerSegmentedRow(
+                currentRingerMode = currentRingerMode,
+                onSelectRingerMode = onSelectRingerMode,
+            )
+        }
+
+        if (showLiveCaption) {
+            LiveCaptionChip(
+                isLiveCaptionEnabled = isLiveCaptionEnabled,
+                onToggleLiveCaption = onToggleLiveCaption,
+                modifier = if (!showRingerModes) Modifier.fillMaxWidth() else Modifier,
+            )
+        }
+    }
+}
+
+/** Material 3 expressive easing curve for mode pill expansion. */
+private val EMPHASIZED_EASING = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+
+/**
+ * A minimal single-pill segmented control for switching system ringer mode (Silent, Vibrate, Normal).
+ * The active mode smoothly expands to show its full label and filled background while inactive
+ * modes collapse to compact icon-only touch targets.
+ */
+@Composable
+private fun RingerSegmentedRow(
+    currentRingerMode: Int,
+    onSelectRingerMode: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val modes = listOf(
+        Triple(AudioManager.RINGER_MODE_SILENT, Icons.AutoMirrored.Rounded.VolumeOff, stringResource(R.string.ringer_mode_silent)),
+        Triple(AudioManager.RINGER_MODE_VIBRATE, Icons.Rounded.Vibration, stringResource(R.string.ringer_mode_vibrate)),
+        Triple(AudioManager.RINGER_MODE_NORMAL, Icons.AutoMirrored.Rounded.VolumeUp, stringResource(R.string.ringer_mode_normal)),
+    )
+
+    Row(
+        modifier = modifier
+            .height(44.dp)
+            .clip(CircleShape)
+            .background(LocalContentColor.current.copy(alpha = 0.08f))
+            .padding(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        modes.forEach { (mode, icon, label) ->
+            val isSelected = currentRingerMode == mode
+            val containerColor by animateColorAsState(
+                targetValue = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                animationSpec = tween(durationMillis = 350, easing = EMPHASIZED_EASING),
+                label = "ringerPillContainer",
+            )
+            val contentColor by animateColorAsState(
+                targetValue = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else LocalContentColor.current.copy(alpha = 0.65f),
+                animationSpec = tween(durationMillis = 350, easing = EMPHASIZED_EASING),
+                label = "ringerPillContent",
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .clip(CircleShape)
+                    .background(containerColor)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) { onSelectRingerMode(mode) }
+                    .padding(horizontal = if (isSelected) 14.dp else 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = contentColor,
+                    modifier = Modifier.size(18.dp),
+                )
+                AnimatedVisibility(
+                    visible = isSelected,
+                    enter = fadeIn(tween(durationMillis = 300, easing = EMPHASIZED_EASING)) +
+                        expandHorizontally(tween(durationMillis = 350, easing = EMPHASIZED_EASING)),
+                    exit = fadeOut(tween(durationMillis = 150, easing = EMPHASIZED_EASING)) +
+                        shrinkHorizontally(tween(durationMillis = 250, easing = EMPHASIZED_EASING)),
+                ) {
+                    Row {
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = contentColor,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * A compact toggle button for enabling or disabling Live Caption.
+ */
+@Composable
+private fun LiveCaptionChip(
+    isLiveCaptionEnabled: Boolean,
+    onToggleLiveCaption: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val containerColor = if (isLiveCaptionEnabled) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        LocalContentColor.current.copy(alpha = 0.08f)
+    }
+    val contentColor = if (isLiveCaptionEnabled) {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        LocalContentColor.current.copy(alpha = 0.65f)
+    }
+
+    Box(
+        modifier = modifier
+            .height(44.dp)
+            .clip(CircleShape)
+            .background(containerColor)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onToggleLiveCaption,
+            )
+            .padding(horizontal = 14.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            Icon(
+                imageVector = if (isLiveCaptionEnabled) Icons.Rounded.ClosedCaption else Icons.Rounded.ClosedCaptionOff,
+                contentDescription = stringResource(R.string.volume_live_caption),
+                tint = contentColor,
+                modifier = Modifier.size(18.dp),
+            )
+            AnimatedVisibility(visible = isLiveCaptionEnabled) {
+                Row {
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = stringResource(R.string.volume_live_caption),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = contentColor,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
                     )
                 }
             }

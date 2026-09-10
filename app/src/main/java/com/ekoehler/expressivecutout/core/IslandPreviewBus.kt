@@ -13,14 +13,21 @@ object IslandPreviewBus {
     private val mutableActive = MutableStateFlow(false)
     val active: StateFlow<Boolean> = mutableActive
 
-    private val mutableExpandedPreview = MutableStateFlow(false)
-    val expandedPreview: StateFlow<Boolean> = mutableExpandedPreview
+    private val mutableExpandedPreview = MutableStateFlow<Boolean?>(false)
+    val expandedPreview: StateFlow<Boolean?> = mutableExpandedPreview
+
+    private val mutablePreviewSignal = MutableStateFlow<CutoutSignal?>(null)
+    val previewSignal: StateFlow<CutoutSignal?> = mutablePreviewSignal
 
     fun setActive(value: Boolean) {
         mutableActive.value = value
     }
 
-    fun setExpandedPreview(value: Boolean) {
+    fun setExpandedPreview(value: Boolean?) {
         mutableExpandedPreview.value = value
+    }
+
+    fun setPreviewSignal(signal: CutoutSignal?) {
+        mutablePreviewSignal.value = signal
     }
 }

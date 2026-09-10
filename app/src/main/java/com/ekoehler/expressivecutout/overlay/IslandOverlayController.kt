@@ -41,6 +41,7 @@ import com.ekoehler.expressivecutout.core.DynamicTile
 import com.ekoehler.expressivecutout.core.IslandEventBus
 import com.ekoehler.expressivecutout.core.IslandPreviewBus
 import com.ekoehler.expressivecutout.core.PermissionDotPreviewBus
+import com.ekoehler.expressivecutout.core.VolumeBus
 import com.ekoehler.expressivecutout.core.ForegroundAppBus
 import com.ekoehler.expressivecutout.core.NowPlayingBus
 import com.ekoehler.expressivecutout.core.OnCallBus
@@ -77,6 +78,8 @@ import com.ekoehler.expressivecutout.data.PhoneTilePreferences
 import com.ekoehler.expressivecutout.data.PhoneTileSettings
 import com.ekoehler.expressivecutout.data.TimerTilePreferences
 import com.ekoehler.expressivecutout.data.TimerTileSettings
+import com.ekoehler.expressivecutout.data.VolumeIntegrationPreferences
+import com.ekoehler.expressivecutout.data.VolumeIntegrationSettings
 import com.ekoehler.expressivecutout.service.CutoutNotificationListenerService
 import com.ekoehler.expressivecutout.system.PermissionUsageMonitor
 import com.ekoehler.expressivecutout.ui.theme.ExpressiveCutoutTheme
@@ -128,8 +131,10 @@ class IslandOverlayController(private val context: Context) {
     private val phoneTilePreferences = PhoneTilePreferences(context)
     private val timerTilePreferences = TimerTilePreferences(context)
     private val assistantTilePreferences = AssistantTilePreferences(context)
+    private val volumeIntegrationPreferences = VolumeIntegrationPreferences(context)
     private val appPreferences = AppPreferences(context)
     private val permissionDotPreferences = PermissionDotPreferences(context)
+    private var volumeSettings = VolumeIntegrationSettings()
     private val density = context.resources.displayMetrics.density
 
     /**
@@ -246,7 +251,7 @@ class IslandOverlayController(private val context: Context) {
     private var timerSettings: TimerTileSettings = TimerTileSettings()
     private var assistantSettings: AssistantTileSettings = AssistantTileSettings()
     private var previewPinned = false
-    private var previewExpanded = false
+    private var previewExpanded: Boolean? = false
     private var expanded = false
     /**
      * True while a media session is actively playing; keeps the music cutout pinned up (no
@@ -361,6 +366,8 @@ class IslandOverlayController(private val context: Context) {
         observePhoneSettings()
         observeTimerSettings()
         observeAssistantSettings()
+        observeVolumeSettings()
+        observeVolumeState()
         observeNowPlaying()
         observeForegroundApp()
         observeOnCall()
@@ -487,9 +494,9 @@ class IslandOverlayController(private val context: Context) {
             previewPinned -> {
                 dismissJob?.cancel()
                 forcedExpanded.value = previewExpanded
-                expanded = previewExpanded
+                expanded = previewExpanded ?: false
                 currentEvent.value = previewEvent
-                setTouchable(false)
+                setTouchable(currentEvent.value != null || (behaviourState.value.showsWhenEmpty && behaviourState.value.cutoutEnabled))
             }
             callActive && lastCallEvent != null -> {
                 dismissJob?.cancel()
@@ -847,6 +854,40 @@ class IslandOverlayController(private val context: Context) {
     /** Mirrors the assistant tile settings into [assistantSettings]. */
     private fun observeAssistantSettings() = scope.launch {
         assistantTilePreferences.settings.collect { assistantSettings = it }
+    }
+
+    /** Mirrors the volume integration settings into [volumeSettings]. */
+    private fun observeVolumeSettings() = scope.launch {
+        volumeIntegrationPreferences.settings.collect { volumeSettings = it }
+    }
+
+    /**
+     * Follows live volume state updates so an active volume cutout updates its displayed percentage,
+     * slider and ringer mode in-place without restarting its lifecycle.
+     */
+    private fun observeVolumeState() = scope.launch {
+        VolumeBus.state.collect { volumeState ->
+            val event = currentEvent.value
+            if (event?.volume != null) {
+                val updated = resolver.resolve(
+                    signal = CutoutSignal.Volume(volumeState),
+                    customIcons = customIcons,
+                    musicSettings = musicSettings,
+                    phoneSettings = phoneSettings,
+                    timerSettings = timerSettings,
+                    assistantSettings = assistantSettings,
+                    volumeSettings = volumeSettings,
+                    dynamicEventColor = eventDynamicColor,
+                    dynamicEventColorRole = eventDynamicColorRole,
+                    dynamicEventColorOpacity = eventDynamicColorOpacity,
+                    animatedIconEnabled = eventAnimatedIcons,
+                    animatedIconLoop = eventAnimatedIconLoops,
+                    eventColorOverrides = eventColors,
+                    preferDynamicIconColor = appearanceState.value.preferDynamicIconColor,
+                ).copy(id = event.id, initiallyExpanded = expanded)
+                currentEvent.value = updated
+            }
+        }
     }
 
     /**
@@ -1645,6 +1686,10 @@ class IslandOverlayController(private val context: Context) {
             val maxCutoutDp = (displayHeightDp * event.assistant.maxCutoutHeightPercent / 100)
             return maxOf(expandedActionsBonusDp(), maxCutoutDp - layoutState.value.expanded.heightDp)
         }
+        if (expanded && event?.volume != null) {
+            val maxCutoutDp = (displayHeightDp * 70 / 100)
+            return maxOf(expandedActionsBonusDp(), maxCutoutDp - layoutState.value.expanded.heightDp)
+        }
         val topMarginExtra = maxOf(0, layoutState.value.expanded.topMarginDp - IslandDimensions.DEFAULT_TOP_MARGIN_DP)
         return when {
             // The empty pill's expanded "center" (no event) claims room for its shortcut row.
@@ -1695,27 +1740,52 @@ class IslandOverlayController(private val context: Context) {
 
     /** While pinned (settings open), keep a persistent preview matching the tab being edited. */
     private fun observePreviewPin() = scope.launch {
-        combine(IslandPreviewBus.active, IslandPreviewBus.expandedPreview, ::Pair)
-            .collect { (pinned, expandedTab) ->
-                previewPinned = pinned
-                previewExpanded = expandedTab
-                val isNoExpandLandscape = currentOrientation == Configuration.ORIENTATION_LANDSCAPE &&
-                    (behaviourState.value.horizontalCutoutMode == HorizontalCutoutMode.NORMAL_ONLY ||
-                     behaviourState.value.horizontalCutoutMode == HorizontalCutoutMode.STICK_TO_CAMERA)
-                val targetExpanded = if (isNoExpandLandscape) false else expandedTab
-                if (pinned) {
-                    dismissJob?.cancel()
-                    forcedExpanded.value = targetExpanded
-                    expanded = targetExpanded
-                    currentEvent.value = previewEvent
+        combine(
+            IslandPreviewBus.active,
+            IslandPreviewBus.expandedPreview,
+            IslandPreviewBus.previewSignal,
+        ) { pinned, expandedTab, previewSig ->
+            Triple(pinned, expandedTab, previewSig)
+        }.collect { (pinned, expandedTab, previewSig) ->
+            previewPinned = pinned
+            previewExpanded = expandedTab
+            val isNoExpandLandscape = currentOrientation == Configuration.ORIENTATION_LANDSCAPE &&
+                (behaviourState.value.horizontalCutoutMode == HorizontalCutoutMode.NORMAL_ONLY ||
+                 behaviourState.value.horizontalCutoutMode == HorizontalCutoutMode.STICK_TO_CAMERA)
+            val targetExpanded = if (isNoExpandLandscape) false else expandedTab
+            if (pinned) {
+                dismissJob?.cancel()
+                forcedExpanded.value = targetExpanded
+                expanded = targetExpanded ?: false
+                val eventToShow = if (previewSig != null) {
+                    resolver.resolve(
+                        signal = previewSig,
+                        customIcons = customIcons,
+                        musicSettings = musicSettings,
+                        phoneSettings = phoneSettings,
+                        timerSettings = timerSettings,
+                        assistantSettings = assistantSettings,
+                        volumeSettings = volumeSettings,
+                        dynamicEventColor = eventDynamicColor,
+                        dynamicEventColorRole = eventDynamicColorRole,
+                        dynamicEventColorOpacity = eventDynamicColorOpacity,
+                        animatedIconEnabled = eventAnimatedIcons,
+                        animatedIconLoop = eventAnimatedIconLoops,
+                        eventColorOverrides = eventColors,
+                        preferDynamicIconColor = appearanceState.value.preferDynamicIconColor,
+                    ).copy(initiallyExpanded = targetExpanded ?: false)
                 } else {
-                    forcedExpanded.value = if (isNoExpandLandscape) false else null
-                    expanded = false
-                    currentEvent.value = null
+                    previewEvent
                 }
-                setTouchable(!pinned && (currentEvent.value != null || (behaviourState.value.showsWhenEmpty && behaviourState.value.cutoutEnabled)))
-                syncWindowSize()
+                currentEvent.value = eventToShow
+            } else {
+                forcedExpanded.value = if (isNoExpandLandscape) false else null
+                expanded = false
+                currentEvent.value = null
             }
+            setTouchable(currentEvent.value != null || (behaviourState.value.showsWhenEmpty && behaviourState.value.cutoutEnabled))
+            syncWindowSize()
+        }
     }
 
     /**
@@ -1781,6 +1851,8 @@ class IslandOverlayController(private val context: Context) {
             if (signal is CutoutSignal.Timer && tileEnabled[DynamicTile.TIMER] == false) return@collect
             // Skip assistant responses when the assistant tile is turned off.
             if (signal is CutoutSignal.Assistant && tileEnabled[DynamicTile.ASSISTANT] == false) return@collect
+            // Skip volume events when the volume overlay integration is disabled.
+            if (signal is CutoutSignal.Volume && !volumeSettings.enabled) return@collect
             // Skip anything posted by an app the user muted on the Apps screen.
             if (signal.sourcePackage() in disabledApps) return@collect
             // Skip silent notifications when configured to ignore them.
@@ -1805,6 +1877,7 @@ class IslandOverlayController(private val context: Context) {
                 is CutoutSignal.Notification -> behaviourState.value.notificationsAutoExpand
                 is CutoutSignal.Music -> musicSettings.expandOnPlay
                 is CutoutSignal.Assistant -> assistantSettings.displayAnswerInCutout
+                is CutoutSignal.Volume -> volumeSettings.expandOnVolumeKey
                 // The phone tile has no expanded state — it is shown as one bigger normal cutout.
                 is CutoutSignal.Call -> false
                 is CutoutSignal.Timer -> false
@@ -1823,6 +1896,7 @@ class IslandOverlayController(private val context: Context) {
                 phoneSettings = phoneSettings,
                 timerSettings = timerSettings,
                 assistantSettings = assistantSettings,
+                volumeSettings = volumeSettings,
                 dynamicEventColor = eventDynamicColor,
                 dynamicEventColorRole = eventDynamicColorRole,
                 dynamicEventColorOpacity = eventDynamicColorOpacity,
@@ -1865,19 +1939,34 @@ class IslandOverlayController(private val context: Context) {
 
             if (!behaviourState.value.cutoutEnabled) return@collect
 
+            val existing = currentEvent.value
+            if (signal is CutoutSignal.System &&
+                (signal.type == SystemEventType.RINGER_NORMAL ||
+                 signal.type == SystemEventType.RINGER_VIBRATE ||
+                 signal.type == SystemEventType.RINGER_SILENT) &&
+                existing != null && existing.volume != null
+            ) {
+                return@collect
+            }
+
             if (signal is CutoutSignal.System &&
                 replaceSystemEventIfNeeded(signal.type, resolvedEvent)
             ) {
                 return@collect
             }
-
-            val existing = currentEvent.value
             if (signal is CutoutSignal.Notification && signal.key != null &&
                 existing != null && existing.notificationKey == signal.key
             ) {
                 currentEvent.value = resolvedEvent.copy(id = existing.id)
                 syncWindowSize()
                 scheduleDismiss()
+                return@collect
+            }
+
+            if (signal is CutoutSignal.Volume && existing != null && existing.volume != null) {
+                currentEvent.value = resolvedEvent.copy(id = existing.id)
+                syncWindowSize()
+                scheduleDismiss(volumeSettings.dismissDurationSeconds * 1_000L)
                 return@collect
             }
 
@@ -1919,6 +2008,10 @@ class IslandOverlayController(private val context: Context) {
                     assistantActive = true
                     lastAssistantEvent = currentEvent.value
                     dismissJob?.cancel()
+                }
+
+                is CutoutSignal.Volume -> {
+                    scheduleDismiss(volumeSettings.dismissDurationSeconds * 1_000L)
                 }
 
                 is CutoutSignal.System -> {
@@ -2123,7 +2216,7 @@ class IslandOverlayController(private val context: Context) {
      * When the user clicks or taps outside of the expanded island, minimize it in a shrink animation.
      */
     private fun onOutsideTouch() {
-        if (shouldCollapseOnOutsideTouch(expanded, previewPinned)) {
+        if (shouldCollapseOnOutsideTouch(expanded, previewPinned, forcedExpanded.value)) {
             collapseTrigger.value = System.currentTimeMillis()
         }
     }
@@ -2202,6 +2295,7 @@ class IslandOverlayController(private val context: Context) {
         is CutoutSignal.Timer -> packageName
         is CutoutSignal.Assistant -> packageName
         is CutoutSignal.System -> null
+        is CutoutSignal.Volume -> null
     }
 
     /**
@@ -2274,20 +2368,20 @@ class IslandOverlayController(private val context: Context) {
      * Arms the timer that dismisses the current pill, preferring a per-event duration override over
      * the global one. A live tile is never given a timer: it stays until its state ends.
      */
-    private fun scheduleDismiss() {
+    private fun scheduleDismiss(customDurationMs: Long? = null) {
         dismissJob?.cancel()
         currentDeadlineMs = null
         // Never time out a live cutout while it's active — it stays until playback / the call stops.
         if (isPinnedLiveTile()) return
-        // A system event with its own duration override wins; everything else uses the global normal.
-        val seconds = currentSystemEventType?.let { eventDurations[it] }
-            ?: behaviourState.value.normalDurationSeconds
-        currentDeadlineMs = System.currentTimeMillis() + seconds * 1_000L
+        // A custom duration wins; then a system event with its own duration override; then global normal.
+        val delayMs = customDurationMs
+            ?: (((currentSystemEventType?.let { eventDurations[it] } ?: behaviourState.value.normalDurationSeconds)) * 1_000L)
+        currentDeadlineMs = System.currentTimeMillis() + delayMs
         dismissJob = scope.launch {
-            delay(seconds * 1_000L)
+            delay(delayMs)
             // Return to the pinned preview if settings is still open.
             if (previewPinned) {
-                expanded = previewExpanded
+                expanded = previewExpanded ?: false
                 forcedExpanded.value = previewExpanded
                 currentEvent.value = previewEvent
                 syncWindowSize()
@@ -2431,8 +2525,11 @@ class IslandOverlayController(private val context: Context) {
     }
 
     internal companion object {
-        fun shouldCollapseOnOutsideTouch(isExpanded: Boolean, previewPinned: Boolean): Boolean =
-            isExpanded && !previewPinned
+        fun shouldCollapseOnOutsideTouch(
+            isExpanded: Boolean,
+            previewPinned: Boolean,
+            forcedExpanded: Boolean? = null,
+        ): Boolean = isExpanded && (!previewPinned || forcedExpanded == null)
         const val TAG = "IslandOverlay"
         const val WINDOW_MARGIN_DP = 24
 

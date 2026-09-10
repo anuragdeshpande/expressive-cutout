@@ -29,6 +29,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -97,6 +98,7 @@ internal fun EventIconsScreen(
     viewModel: AppViewModel,
     contentPadding: PaddingValues,
     onOpenEvent: (SystemEventType) -> Unit,
+    onOpenVolume: () -> Unit = {},
 ) {
     val customIcons by viewModel.customIcons.collectAsStateWithLifecycle()
     val eventEnabled by viewModel.eventEnabled.collectAsStateWithLifecycle()
@@ -105,6 +107,7 @@ internal fun EventIconsScreen(
     val dynamicColorOpacity by viewModel.eventDynamicColorOpacity.collectAsStateWithLifecycle()
     val animatedIcons by viewModel.eventAnimatedIcons.collectAsStateWithLifecycle()
     val animatedIconLoops by viewModel.eventAnimatedIconLoops.collectAsStateWithLifecycle()
+    val volumeSettings by viewModel.volumeIntegration.collectAsStateWithLifecycle()
     var selectedFamily by remember { mutableStateOf<SystemEventFamily?>(null) }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -142,7 +145,7 @@ internal fun EventIconsScreen(
                 }
             }
 
-            items(SystemEventFamily.entries, key = { it.name }) { family ->
+            items(SystemEventFamily.entries.filter { it != SystemEventFamily.RINGER }, key = { it.name }) { family ->
                 EventFamilyCard(
                     family = family,
                     source = customIcons[family.members.first()],
@@ -155,6 +158,34 @@ internal fun EventIconsScreen(
                     eventEnabled = eventEnabled,
                     onEnabledChange = { viewModel.setEventEnabled(family.members.first(), it) },
                     onClick = { selectedFamily = family },
+                )
+            }
+
+            item(key = "volume_integration") {
+                VolumeEventCard(
+                    enabled = volumeSettings.enabled,
+                    dynamicColor = dynamicColor,
+                    dynamicColorRole = dynamicColorRole,
+                    dynamicColorOpacity = dynamicColorOpacity,
+                    colorOverride = volumeSettings.iconContainerColor,
+                    onEnabledChange = { viewModel.setVolumeEnabled(it) },
+                    onClick = onOpenVolume,
+                )
+            }
+
+            item(key = SystemEventFamily.RINGER.name) {
+                EventFamilyCard(
+                    family = SystemEventFamily.RINGER,
+                    source = customIcons[SystemEventFamily.RINGER.members.first()],
+                    dynamicColor = dynamicColor,
+                    dynamicColorRole = dynamicColorRole,
+                    dynamicColorOpacity = dynamicColorOpacity,
+                    animate = animatedIcons[SystemEventFamily.RINGER.members.first()] ?: true,
+                    loop = animatedIconLoops[SystemEventFamily.RINGER.members.first()]
+                        ?: SystemEventFamily.RINGER.members.first().animationLoopsByDefault(),
+                    eventEnabled = eventEnabled,
+                    onEnabledChange = { viewModel.setEventEnabled(SystemEventFamily.RINGER.members.first(), it) },
+                    onClick = { selectedFamily = SystemEventFamily.RINGER },
                 )
             }
         }
@@ -231,6 +262,76 @@ internal fun EventIconsScreen(
             }
         }
     }
+
+/**
+ * Displays the Volume overlay integration card in the system events list.
+ */
+@Composable
+private fun VolumeEventCard(
+    enabled: Boolean,
+    dynamicColor: Boolean,
+    dynamicColorRole: DynamicRole,
+    dynamicColorOpacity: Float,
+    colorOverride: CutoutColor?,
+    onEnabledChange: (Boolean) -> Unit,
+    onClick: () -> Unit,
+) {
+    val overrideColor = colorOverride?.resolve()
+    val targetBadge = when {
+        overrideColor != null -> overrideColor.copy(alpha = 0.18f)
+        dynamicColor -> MaterialTheme.colorScheme.forRole(dynamicColorRole).copy(alpha = dynamicColorOpacity)
+        else -> Color(0xFF60A5FA).copy(alpha = 0.18f)
+    }
+    val badgeColor by animateColorAsState(targetBadge, label = "volumeBadgeColor")
+    val targetGlyph = when {
+        overrideColor != null -> overrideColor
+        dynamicColor -> MaterialTheme.colorScheme.onForRole(dynamicColorRole)
+        else -> Color(0xFF60A5FA)
+    }
+    val glyphColor by animateColorAsState(targetGlyph, label = "volumeGlyphColor")
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(badgeColor),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.VolumeUp,
+                    contentDescription = null,
+                    tint = glyphColor,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = stringResource(R.string.integration_volume_title), style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = stringResource(R.string.integration_volume_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(checked = enabled, onCheckedChange = onEnabledChange)
+            }
+        }
+    }
+}
 
 /**
  * Presents one family at a time and lets the user swipe between its state settings.

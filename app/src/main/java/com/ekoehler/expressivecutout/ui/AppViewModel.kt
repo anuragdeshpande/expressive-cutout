@@ -59,6 +59,8 @@ import com.ekoehler.expressivecutout.data.SwipeDismissDirection
 import com.ekoehler.expressivecutout.data.SatellitePosition
 import com.ekoehler.expressivecutout.data.SwipeDismissTarget
 import com.ekoehler.expressivecutout.data.ThemePreferences
+import com.ekoehler.expressivecutout.data.VolumeIntegrationPreferences
+import com.ekoehler.expressivecutout.data.VolumeIntegrationSettings
 import com.ekoehler.expressivecutout.ui.theme.AppTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
@@ -89,6 +91,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val recentColorPreferences = RecentColorPreferences(application)
     private val statusBarPreferences = StatusBarPreferences(application)
     private val permissionDotPreferences = PermissionDotPreferences(application)
+    private val volumeIntegrationPreferences = VolumeIntegrationPreferences(application)
 
     val customIcons: StateFlow<Map<SystemEventType, IconSource>> =
         preferences.customIcons.stateIn(
@@ -235,6 +238,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             initialValue = AppearanceSettings(),
         )
 
+    val volumeIntegration: StateFlow<VolumeIntegrationSettings> =
+        volumeIntegrationPreferences.settings.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = VolumeIntegrationSettings(),
+        )
+
     /**
      * Every settings store keyed by its section label, in the order they're written to and read
      * from the export document. This single list is the source of truth for both export and import —
@@ -256,6 +266,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         JsonSettings.RECENT_COLORS to recentColorPreferences,
         JsonSettings.STATUS_BAR to statusBarPreferences,
         JsonSettings.PERMISSION_DOT to permissionDotPreferences,
+        JsonSettings.VOLUME_INTEGRATION to volumeIntegrationPreferences,
     )
 
     /** Exports every settings store as one JSON document; see [JsonSettings.export]. */
@@ -920,5 +931,41 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setAlertOnNotification(enabled: Boolean) = viewModelScope.launch {
         behaviourPreferences.setAlertOnNotification(enabled)
+    }
+
+    fun setVolumeEnabled(enabled: Boolean) = viewModelScope.launch {
+        volumeIntegrationPreferences.setEnabled(enabled)
+    }
+
+    fun setVolumeInterceptVolumeKeys(intercept: Boolean) = viewModelScope.launch {
+        volumeIntegrationPreferences.setInterceptVolumeKeys(intercept)
+    }
+
+    fun setVolumeStepSize(step: Int) = viewModelScope.launch {
+        volumeIntegrationPreferences.setVolumeStepSize(step)
+    }
+
+    fun setVolumeDynamicVolumeStep(enabled: Boolean) = viewModelScope.launch {
+        volumeIntegrationPreferences.setDynamicVolumeStep(enabled)
+    }
+
+    fun setVolumeShowRingerModes(show: Boolean) = viewModelScope.launch {
+        volumeIntegrationPreferences.setShowRingerModes(show)
+    }
+
+    fun setVolumeShowLiveCaption(show: Boolean) = viewModelScope.launch {
+        volumeIntegrationPreferences.setShowLiveCaption(show)
+    }
+
+    fun setVolumeExpandOnVolumeKey(expand: Boolean) = viewModelScope.launch {
+        volumeIntegrationPreferences.setExpandOnVolumeKey(expand)
+    }
+
+    fun setVolumeDismissDurationSeconds(seconds: Int) = viewModelScope.launch {
+        volumeIntegrationPreferences.setDismissDurationSeconds(seconds)
+    }
+
+    fun setVolumeIconContainerColor(color: CutoutColor?) = viewModelScope.launch {
+        volumeIntegrationPreferences.setIconContainerColor(color)
     }
 }

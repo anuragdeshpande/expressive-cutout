@@ -535,6 +535,31 @@
     <!-- Integrations -->
     <string name="integrations_title">Integrations</string>
     <string name="integrations_system_events_title">System events</string>
+    <string name="integration_volume_title">Volume overlay</string>
+    <string name="integration_volume_subtitle">Volume changes &amp; ringer controls in the cutout</string>
+    <string name="integration_volume_enabled_title">Enable volume overlay</string>
+    <string name="integration_volume_enabled_desc">Show volume indicator in the cutout island</string>
+    <string name="integration_volume_intercept_title">Intercept volume buttons</string>
+    <string name="integration_volume_intercept_desc">Suppress default system volume UI and show cutout HUD instead</string>
+    <string name="integration_volume_ringer_modes_title">Ringer mode switcher</string>
+    <string name="integration_volume_ringer_modes_desc">Show Silent, Vibrate, and Ringer toggle buttons when expanded</string>
+    <string name="integration_volume_live_caption_title">Live captions</string>
+    <string name="integration_volume_live_caption_desc">Show Live Caption button when expanded</string>
+    <string name="integration_volume_expand_on_key_title">Expand on volume change</string>
+    <string name="integration_volume_expand_on_key_desc">Automatically expand the cutout slider when volume keys are pressed</string>
+    <string name="integration_volume_dismiss_title">Display duration</string>
+    <string name="integration_volume_dismiss_desc">How long the volume cutout stays visible after the last change</string>
+    <string name="integration_volume_step_title">Volume step size</string>
+    <string name="integration_volume_step_desc">How many hardware stream steps volume shifts per button click (1..10)</string>
+    <string name="integration_volume_dynamic_step_title">Dynamic volume adjustment</string>
+    <string name="integration_volume_dynamic_step_desc">Increase step size when holding down the volume button</string>
+    <string name="integration_volume_panel_desc">Open volume panel</string>
+    <string name="ringer_mode_silent">Silent</string>
+    <string name="ringer_mode_vibrate">Vibrate</string>
+    <string name="ringer_mode_normal">Ringer</string>
+    <string name="volume_live_caption">Caption</string>
+    <string name="volume_preview_tab_normal">Normal</string>
+    <string name="volume_preview_tab_expanded">Expanded</string>
 
     <!-- Shown on the island for a notification that carries neither a title nor any text. -->
     <string name="island_notification">Notification</string>

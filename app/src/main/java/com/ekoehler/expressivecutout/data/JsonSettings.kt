@@ -38,6 +38,7 @@ object JsonSettings {
     const val RECENT_COLORS = "recentColors"
     const val STATUS_BAR = "statusBar"
     const val PERMISSION_DOT = "permissionDot"
+    const val VOLUME_INTEGRATION = "volumeIntegration"
 
     /** The outcome of an [import], so the UI can tell the user exactly what happened. */
     enum class ImportResult { SUCCESS, NOT_A_SETTINGS_FILE, ERROR }

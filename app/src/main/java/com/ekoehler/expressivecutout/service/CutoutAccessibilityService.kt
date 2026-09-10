@@ -1,42 +1,74 @@
 package com.ekoehler.expressivecutout.service
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
+import android.content.Context
 import android.content.res.Configuration
+import android.media.AudioManager
+import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.ekoehler.expressivecutout.core.CutoutSignal
 import com.ekoehler.expressivecutout.core.ForegroundAppBus
 import com.ekoehler.expressivecutout.core.IslandEventBus
+import com.ekoehler.expressivecutout.data.VolumeIntegrationPreferences
+import com.ekoehler.expressivecutout.data.VolumeIntegrationSettings
 import com.ekoehler.expressivecutout.events.MediaPlaybackMonitor
 import com.ekoehler.expressivecutout.events.SystemEventMonitor
+import com.ekoehler.expressivecutout.events.VolumeMonitor
 import com.ekoehler.expressivecutout.overlay.IslandOverlayController
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 /**
  * The always-on host of the island. Its main purpose is to provide a context that can add
  * a TYPE_ACCESSIBILITY_OVERLAY window (no SYSTEM_ALERT_WINDOW required) and to keep the
- * overlay controller and system-event monitor alive for the lifetime of the binding.
+ * overlay controller, system-event monitor, and volume monitor alive for the lifetime of the binding.
  *
- * It tracks which app is in the foreground, and inspects assistant windows for live response text.
+ * It tracks which app is in the foreground, inspects assistant windows for live response text,
+ * and intercepts volume keys when the volume integration is active.
  */
 class CutoutAccessibilityService : AccessibilityService() {
 
+    private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var overlay: IslandOverlayController? = null
     private var systemEvents: SystemEventMonitor? = null
     private var mediaPlayback: MediaPlaybackMonitor? = null
+    private var volumeMonitor: VolumeMonitor? = null
+    private var volumeSettings = VolumeIntegrationSettings()
+    private var volumeKeyRepeatJob: Job? = null
     private var lastAssistantKey: String? = null
 
     /**
-     * Starts the overlay and the two event monitors, and publishes the service so the rest of the
+     * Starts the overlay and the event monitors, and publishes the service so the rest of the
      * app can see that the island is live. Mirrored by [teardown].
      */
     override fun onServiceConnected() {
         super.onServiceConnected()
+        val info = serviceInfo
+        info.flags = info.flags or AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
+        serviceInfo = info
+
         overlay = IslandOverlayController(this).also { it.start() }
         systemEvents = SystemEventMonitor(this).also { it.start() }
         mediaPlayback = MediaPlaybackMonitor(this).also { it.start() }
+        volumeMonitor = VolumeMonitor(this).also { it.start() }
+
+        serviceScope.launch {
+            VolumeIntegrationPreferences(this@CutoutAccessibilityService).settings.collect {
+                volumeSettings = it
+            }
+        }
+
         instance = this
         _bound.value = true
     }
@@ -173,7 +205,58 @@ class CutoutAccessibilityService : AccessibilityService() {
     }
 
     /** Required by the framework. The island has no interruptible work of its own. */
-    override fun onInterrupt() = Unit
+    override fun onInterrupt() {
+        volumeKeyRepeatJob?.cancel()
+        volumeKeyRepeatJob = null
+    }
+
+    /**
+     * Intercepts hardware volume key events when the volume overlay integration is enabled,
+     * suppressing the default Android volume rocker overlay and adjusting volume programmatically.
+     * Long-pressing or holding down a volume key continues to repeat volume adjustments smoothly.
+     */
+    override fun onKeyEvent(event: KeyEvent): Boolean {
+        if (!volumeSettings.enabled || !volumeSettings.interceptVolumeKeys) {
+            return super.onKeyEvent(event)
+        }
+
+        val direction = when (event.keyCode) {
+            KeyEvent.KEYCODE_VOLUME_UP -> AudioManager.ADJUST_RAISE
+            KeyEvent.KEYCODE_VOLUME_DOWN -> AudioManager.ADJUST_LOWER
+            KeyEvent.KEYCODE_VOLUME_MUTE -> AudioManager.ADJUST_TOGGLE_MUTE
+            else -> return super.onKeyEvent(event)
+        }
+
+        when (event.action) {
+            KeyEvent.ACTION_DOWN -> {
+                if (event.repeatCount == 0) {
+                    volumeKeyRepeatJob?.cancel()
+                    volumeMonitor?.adjustMediaVolume(direction, volumeSettings.volumeStepSize)
+                    if (direction != AudioManager.ADJUST_TOGGLE_MUTE) {
+                        val repeatStepSize = if (volumeSettings.dynamicVolumeStep) {
+                            (volumeSettings.volumeStepSize * 2).coerceAtMost(VolumeIntegrationSettings.MAX_VOLUME_STEP_SIZE)
+                        } else {
+                            volumeSettings.volumeStepSize
+                        }
+                        volumeKeyRepeatJob = serviceScope.launch {
+                            delay(INITIAL_KEY_REPEAT_DELAY_MS)
+                            while (isActive) {
+                                volumeMonitor?.adjustMediaVolume(direction, repeatStepSize)
+                                delay(KEY_REPEAT_INTERVAL_MS)
+                            }
+                        }
+                    }
+                }
+                return true
+            }
+            KeyEvent.ACTION_UP -> {
+                volumeKeyRepeatJob?.cancel()
+                volumeKeyRepeatJob = null
+                return true
+            }
+        }
+        return super.onKeyEvent(event)
+    }
 
     /**
      * Tears everything down on unbind, which is when the user turns the service off in settings.
@@ -196,8 +279,12 @@ class CutoutAccessibilityService : AccessibilityService() {
      * twice, because unbind and destroy both reach it.
      */
     private fun teardown() {
+        volumeKeyRepeatJob?.cancel()
+        volumeKeyRepeatJob = null
         _bound.value = false
         instance = null
+        volumeMonitor?.stop()
+        volumeMonitor = null
         mediaPlayback?.stop()
         mediaPlayback = null
         systemEvents?.stop()
@@ -222,6 +309,56 @@ class CutoutAccessibilityService : AccessibilityService() {
         fun performGlobal(action: Int): Boolean =
             runCatching { instance?.performGlobalAction(action) }.getOrNull() ?: false
 
+        /** Adjusts the media stream volume level via the live service or fallback context. */
+        fun setMediaVolume(volumeIndex: Int, showUi: Boolean = false, fallbackContext: Context? = null) {
+            val monitor = instance?.volumeMonitor
+            if (monitor != null) {
+                monitor.setMediaVolume(volumeIndex, showUi)
+            } else if (fallbackContext != null) {
+                VolumeMonitor(fallbackContext).setMediaVolume(volumeIndex, showUi)
+            }
+        }
+
+        /** Adjusts the media stream volume percentage via the live service or fallback context. */
+        fun setMediaVolumePercent(percent: Int, showUi: Boolean = false, fallbackContext: Context? = null) {
+            val monitor = instance?.volumeMonitor
+            if (monitor != null) {
+                monitor.setMediaVolumePercent(percent, showUi)
+            } else if (fallbackContext != null) {
+                VolumeMonitor(fallbackContext).setMediaVolumePercent(percent, showUi)
+            }
+        }
+
+        /** Changes the ringer mode via the live service or fallback context. */
+        fun setRingerMode(mode: Int, fallbackContext: Context? = null) {
+            val monitor = instance?.volumeMonitor
+            if (monitor != null) {
+                monitor.setRingerMode(mode)
+            } else if (fallbackContext != null) {
+                VolumeMonitor(fallbackContext).setRingerMode(mode)
+            }
+        }
+
+        /** Toggles Live Caption via the live service or fallback context. */
+        fun toggleLiveCaption(fallbackContext: Context? = null) {
+            val monitor = instance?.volumeMonitor
+            if (monitor != null) {
+                monitor.toggleLiveCaption()
+            } else if (fallbackContext != null) {
+                VolumeMonitor(fallbackContext).toggleLiveCaption()
+            }
+        }
+
+        /** Launches the system volume panel bottom sheet via the live service or fallback context. */
+        fun openVolumePanel(fallbackContext: Context? = null) {
+            val monitor = instance?.volumeMonitor
+            if (monitor != null) {
+                monitor.openVolumePanel()
+            } else if (fallbackContext != null) {
+                VolumeMonitor(fallbackContext).openVolumePanel()
+            }
+        }
+
         private val _bound = MutableStateFlow(false)
 
         /**
@@ -235,5 +372,8 @@ class CutoutAccessibilityService : AccessibilityService() {
          * service) can observe it without a binder of its own.
          */
         val bound: StateFlow<Boolean> = _bound.asStateFlow()
+
+        private const val INITIAL_KEY_REPEAT_DELAY_MS = 300L
+        private const val KEY_REPEAT_INTERVAL_MS = 60L
     }
 }

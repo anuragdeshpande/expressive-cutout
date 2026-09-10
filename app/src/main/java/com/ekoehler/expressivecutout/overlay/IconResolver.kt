@@ -2,11 +2,16 @@ package com.ekoehler.expressivecutout.overlay
 
 import android.content.Context
 import android.graphics.drawable.AdaptiveIconDrawable
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
+import androidx.compose.material.icons.automirrored.rounded.VolumeOff
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import com.airbnb.lottie.compose.LottieConstants
@@ -22,6 +27,7 @@ import com.ekoehler.expressivecutout.data.IconSource
 import com.ekoehler.expressivecutout.data.MusicTileSettings
 import com.ekoehler.expressivecutout.data.PhoneTileSettings
 import com.ekoehler.expressivecutout.data.TimerTileSettings
+import com.ekoehler.expressivecutout.data.VolumeIntegrationSettings
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.sign
 
@@ -85,6 +91,7 @@ class IconResolver(private val context: Context) {
         phoneSettings: PhoneTileSettings,
         timerSettings: TimerTileSettings,
         assistantSettings: AssistantTileSettings = AssistantTileSettings(),
+        volumeSettings: VolumeIntegrationSettings = VolumeIntegrationSettings(),
         dynamicEventColor: Boolean = false,
         dynamicEventColorRole: DynamicRole = DynamicRole.PRIMARY,
         dynamicEventColorOpacity: Float = 1f,
@@ -100,6 +107,7 @@ class IconResolver(private val context: Context) {
             is CutoutSignal.Timer -> signal.packageName
             is CutoutSignal.Assistant -> signal.packageName
             is CutoutSignal.System -> null
+            is CutoutSignal.Volume -> null
         }
         val appColor = packageName?.let { AppIconColorExtractor.extractAppColor(context, it) }
 
@@ -127,7 +135,40 @@ class IconResolver(private val context: Context) {
             is CutoutSignal.Call -> resolveCall(signal, signal.packageName, appColor, phoneSettings)
             is CutoutSignal.Timer -> resolveTimer(signal, signal.packageName, appColor, timerSettings)
             is CutoutSignal.Assistant -> resolveAssistant(signal, signal.packageName, appColor, assistantSettings)
+            is CutoutSignal.Volume -> resolveVolume(signal, volumeSettings)
         }
+    }
+
+    private fun resolveVolume(
+        signal: CutoutSignal.Volume,
+        volumeSettings: VolumeIntegrationSettings,
+    ): IslandEvent {
+        val state = signal.volumeState
+        val icon = if (state.isMuted || state.ringerMode == AudioManager.RINGER_MODE_SILENT) {
+            IslandIcon.Vector(Icons.AutoMirrored.Rounded.VolumeOff)
+        } else if (state.ringerMode == AudioManager.RINGER_MODE_VIBRATE) {
+            IslandIcon.Vector(Icons.Rounded.Vibration)
+        } else {
+            IslandIcon.Vector(Icons.Rounded.MusicNote)
+        }
+
+        return IslandEvent(
+            id = VOLUME_EVENT_ID,
+            icon = icon,
+            label = context.getString(R.string.integration_volume_title),
+            detail = "${state.mediaVolumePercent}%",
+            appName = context.getString(R.string.app_name),
+            postTimeMs = System.currentTimeMillis(),
+            accent = Color(0xFF38BDF8),
+            iconContainerColor = volumeSettings.iconContainerColor,
+            trailingText = "${state.mediaVolumePercent}%",
+            volume = VolumeOverlayOptions(
+                volumeState = state,
+                showSlider = true,
+                showRingerModes = volumeSettings.showRingerModes,
+                showLiveCaption = volumeSettings.showLiveCaption,
+            ),
+        )
     }
 
     private fun resolveNotification(
@@ -578,6 +619,9 @@ class IconResolver(private val context: Context) {
          * case).
          */
         val ANSWER_KEYWORDS = listOf("answer", "accept", "pick up", "pickup", "take call")
+
+        /** Stable ID for volume overlay events so updates don't recreate the event. */
+        const val VOLUME_EVENT_ID = 999999999L
 
         /**
          * Lower-cased substrings marking a timer's reset/terminate action, so it can be tinted

@@ -131,6 +131,11 @@ data class IslandEvent(
      */
     val assistant: AssistantTileOptions? = null,
     /**
+     * When non-null this is the volume integration: the island displays the live volume percentage
+     * and media icon collapsed, and volume slider / ringer modes / live caption when expanded.
+     */
+    val volume: VolumeOverlayOptions? = null,
+    /**
      * Contains the progress of this notification if it is a progress one.
      * Is null otherwise
      */
@@ -158,6 +163,14 @@ data class IslandEvent(
     val actionIntentAction: String? = null,
     /** Optional URI data to attach to [actionIntentAction]. */
     val actionIntentUri: String? = null,
+)
+
+/** Which parts of the volume overlay integration to render, per its settings. */
+data class VolumeOverlayOptions(
+    val volumeState: com.ekoehler.expressivecutout.core.VolumeState,
+    val showSlider: Boolean = true,
+    val showRingerModes: Boolean = true,
+    val showLiveCaption: Boolean = true,
 )
 
 /** Which parts of the assistant tile to render (display text, max height). */

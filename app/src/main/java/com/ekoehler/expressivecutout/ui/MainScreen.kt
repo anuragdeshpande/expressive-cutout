@@ -246,6 +246,7 @@ fun MainScreen(viewModel: AppViewModel = viewModel()) {
                                 selectedEventName = event.name
                                 integrationsRoute = IntegrationsRoute.EventDetail
                             },
+                            onOpenVolumeIntegration = { integrationsRoute = IntegrationsRoute.VolumeIntegration },
                         )
 
                         HomeTab.Profile -> ProfileTab(
@@ -308,6 +309,7 @@ fun MainScreen(viewModel: AppViewModel = viewModel()) {
                     HomeTab.Integrations -> when (integrationsRoute) {
                         IntegrationsRoute.EventDetail ->
                             selectedEvent?.let { stringResource(it.labelRes) } ?: stringResource(R.string.integrations_system_events_title)
+                        IntegrationsRoute.VolumeIntegration -> stringResource(R.string.integration_volume_title)
                         else -> stringResource(R.string.integrations_system_events_title)
                     }
                     else -> when (settingsRoute) {
