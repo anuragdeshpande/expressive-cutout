@@ -24,7 +24,7 @@ import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -40,8 +40,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -62,6 +60,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -88,6 +87,7 @@ import com.ekoehler.expressivecutout.overlay.MaterialIconCatalog
 import com.ekoehler.expressivecutout.overlay.onForRole
 import com.ekoehler.expressivecutout.overlay.resolve
 import com.ekoehler.expressivecutout.ui.AppViewModel
+import com.ekoehler.expressivecutout.ui.components.ExpressivePillRow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -108,6 +108,7 @@ internal fun EventIconsScreen(
     val animatedIcons by viewModel.eventAnimatedIcons.collectAsStateWithLifecycle()
     val animatedIconLoops by viewModel.eventAnimatedIconLoops.collectAsStateWithLifecycle()
     val volumeSettings by viewModel.volumeIntegration.collectAsStateWithLifecycle()
+    val nonRingerFamilies = remember { SystemEventFamily.entries.filter { it != SystemEventFamily.RINGER } }
     var selectedFamily by remember { mutableStateOf<SystemEventFamily?>(null) }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -145,9 +146,16 @@ internal fun EventIconsScreen(
                 }
             }
 
-            items(SystemEventFamily.entries.filter { it != SystemEventFamily.RINGER }, key = { it.name }) { family ->
+            itemsIndexed(nonRingerFamilies, key = { _, family -> family.name }) { index, family ->
+                val topRadius = if (index == 0) 24.dp else 4.dp
                 EventFamilyCard(
                     family = family,
+                    shape = RoundedCornerShape(
+                        topStart = topRadius,
+                        topEnd = topRadius,
+                        bottomStart = 4.dp,
+                        bottomEnd = 4.dp,
+                    ),
                     source = customIcons[family.members.first()],
                     dynamicColor = dynamicColor,
                     dynamicColorRole = dynamicColorRole,
@@ -176,6 +184,12 @@ internal fun EventIconsScreen(
             item(key = SystemEventFamily.RINGER.name) {
                 EventFamilyCard(
                     family = SystemEventFamily.RINGER,
+                    shape = RoundedCornerShape(
+                        topStart = 4.dp,
+                        topEnd = 4.dp,
+                        bottomStart = 24.dp,
+                        bottomEnd = 24.dp,
+                    ),
                     source = customIcons[SystemEventFamily.RINGER.members.first()],
                     dynamicColor = dynamicColor,
                     dynamicColorRole = dynamicColorRole,
@@ -212,6 +226,7 @@ internal fun EventIconsScreen(
 @Composable
     private fun EventFamilyCard(
         family: SystemEventFamily,
+        shape: Shape,
         source: IconSource?,
         dynamicColor: Boolean,
         dynamicColorRole: DynamicRole,
@@ -224,18 +239,14 @@ internal fun EventIconsScreen(
     ) {
         val context = LocalContext.current
         val familyEnabled = family.members.all { eventEnabled[it] != false }
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onClick)
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+        SettingsToggleNavCard(
+            shape = shape,
+            title = stringResource(family.labelRes),
+            description = context.getString(family.descriptionRes),
+            checked = familyEnabled,
+            onCheckedChange = onEnabledChange,
+            onClick = onClick,
+            leading = {
                 EventIconThumbnail(
                     type = family.members.first(),
                     source = source,
@@ -246,21 +257,8 @@ internal fun EventIconsScreen(
                     loop = loop,
                     size = 48.dp,
                 )
-                Spacer(Modifier.width(14.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(text = stringResource(family.labelRes), style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        text = context.getString(family.descriptionRes),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                    )
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Switch(checked = familyEnabled, onCheckedChange = onEnabledChange)
-                }
-            }
-        }
+            },
+        )
     }
 
 /**
@@ -363,34 +361,25 @@ private fun EventFamilySheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.8f)
-                .padding(bottom = 24.dp),
+                .fillMaxHeight(0.8f),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(family.labelRes),
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            TabRow(selectedTabIndex = pagerState.currentPage) {
-                family.members.forEachIndexed { index, type ->
-                    Tab(
-                        selected = pagerState.currentPage == index,
-                        onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
-                        text = {
-                            Text(
-                                text = stringResource(type.labelRes),
-                                maxLines = 1,
-                            )
-                        },
-                    )
-                }
-            }
+            Text(
+                text = stringResource(family.labelRes),
+                style = MaterialTheme.typography.titleLarge,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 8.dp),
+            )
+            ExpressivePillRow(
+                options = family.members.map { stringResource(it.tabLabelRes) },
+                selectedIndex = pagerState.currentPage,
+                onSelect = { index -> scope.launch { pagerState.animateScrollToPage(index) } },
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 24.dp),
+            )
             HorizontalPager(
                 state = pagerState,
                 contentPadding = PaddingValues(horizontal = 16.dp),
@@ -400,7 +389,7 @@ private fun EventFamilySheet(
                     EventDetailScreen(
                         type = type,
                         viewModel = viewModel,
-                        contentPadding = PaddingValues(horizontal = 8.dp),
+                        contentPadding = PaddingValues(start = 8.dp, end = 8.dp, bottom = 24.dp),
                     )
                 }
             }

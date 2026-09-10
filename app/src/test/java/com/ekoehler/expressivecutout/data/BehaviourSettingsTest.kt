@@ -36,6 +36,7 @@ class BehaviourSettingsTest {
                 is CutoutSignal.Call -> false
                 is CutoutSignal.Timer -> false
                 is CutoutSignal.System -> false
+                is CutoutSignal.Volume -> false
             }
             return if (isNoExpandLandscape || normalOnly) false else rawAutoExpand
         }
