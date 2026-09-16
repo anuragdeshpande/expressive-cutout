@@ -639,11 +639,8 @@
     <string name="test_progress_complete_title">Download complete</string>
     <string name="test_progress_complete_text">document_preview.pdf</string>
     <!-- Integrations Tab & Notification Previews -->
-    <string name="nav_integrations">Integrations</string>
     <string name="perm_sensitive_content_title">Sensitive message content</string>
     <string name="perm_sensitive_content_desc">Allow notification message content previews on the cutout. When enabled, apps show message summaries by default, with per-app controls in Integrations.</string>
-
-    <string name="integrations_subtitle">Extend your cutout with intelligent notification previews and connected modules</string>
     <string name="integration_notif_preview_title">Notification Previews</string>
     <string name="integration_notif_preview_desc">Display 2-row summary previews and primary actions instead of a blank island</string>
     <string name="integration_notif_preview_hero_tag">Featured</string>
