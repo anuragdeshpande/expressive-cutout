@@ -465,6 +465,11 @@ class IslandOverlayController(private val context: Context) {
                 restoreActiveState()
             }
 
+            !shouldHide && composeView == null -> {
+                addOverlay()
+                syncWindowSize()
+            }
+
             !shouldHide && !overlayHidden && isDeviceLockedActual && currentEvent.value == null -> {
                 showLockedEvent()
             }
@@ -637,10 +642,30 @@ class IslandOverlayController(private val context: Context) {
     }
 
     /**
+     * Guarantees the overlay window is created and attached to [WindowManager] whenever the island
+     * is active and not suppressed by lockscreen or landscape settings.
+     */
+    private fun ensureOverlayAttached() {
+        val isKeyguardLocked = keyguardManager?.isKeyguardLocked == true
+        val shouldHideLock = behaviourState.value.hideOnLockscreen && isKeyguardLocked
+        val isLandscapeHidden = behaviourState.value.horizontalCutoutMode == HorizontalCutoutMode.HIDDEN ||
+            behaviourState.value.hideInLandscape
+        val shouldHideLandscape = isLandscapeHidden &&
+            currentOrientation == Configuration.ORIENTATION_LANDSCAPE
+        if (shouldHideLock || shouldHideLandscape) return
+        if (composeView == null) {
+            overlayHidden = false
+            addOverlay()
+            syncWindowSize()
+        }
+    }
+
+    /**
      * Creates the Compose-hosting overlay window and attaches it to the window manager. This is the
      * one place the island touches the framework's view system.
      */
     private fun addOverlay() {
+        if (composeView != null) return
         val view = ComposeView(context).apply {
             setViewTreeLifecycleOwner(lifecycleOwner)
             setViewTreeViewModelStoreOwner(lifecycleOwner)
@@ -737,10 +762,16 @@ class IslandOverlayController(private val context: Context) {
             }
         }
         val params = buildLayoutParams()
-        windowManager.addView(view, params)
-        composeView = view
-        layoutParams = params
-        installTouchableRegion(view)
+        runCatching {
+            windowManager.addView(view, params)
+            composeView = view
+            layoutParams = params
+            installTouchableRegion(view)
+        }.onFailure {
+            Log.e(TAG, "Failed to add overlay window", it)
+            composeView = null
+            layoutParams = null
+        }
     }
 
     /**
@@ -748,8 +779,11 @@ class IslandOverlayController(private val context: Context) {
      * leave a view behind on a service that is already going away.
      */
     private fun removeOverlay() {
-        composeView?.let { windowManager.removeViewImmediate(it) }
+        val view = composeView ?: return
+        runCatching { windowManager.removeViewImmediate(view) }
+            .onFailure { Log.w(TAG, "Failed to remove overlay window", it) }
         composeView = null
+        layoutParams = null
         insetsListener = null
     }
 
@@ -1142,6 +1176,7 @@ class IslandOverlayController(private val context: Context) {
      */
     private fun observeVisibility() = scope.launch {
         combine(currentEvent, behaviourState, ::Pair).collect { (event, behaviour) ->
+            ensureOverlayAttached()
             val allowsTouch = !previewPinned || event?.preview != null || previewStack.value.isNotEmpty()
             Log.d(TAG, "observeVisibility: event=${event?.label}, previewPinned=$previewPinned, preview=${event?.preview != null}, allowsTouch=$allowsTouch")
             setTouchable(
@@ -1223,6 +1258,7 @@ class IslandOverlayController(private val context: Context) {
      * nothing changed so an unchanged layout costs no framework work.
      */
     private fun resizeWindow(targetWidthPx: Int, targetHeightPx: Int) {
+        ensureOverlayAttached()
         val view = composeView ?: return
         val params = layoutParams ?: return
         val targetGravity = computeWindowGravity()
@@ -1243,6 +1279,7 @@ class IslandOverlayController(private val context: Context) {
      * something on screen to press.
      */
     private fun setTouchable(touchable: Boolean) {
+        ensureOverlayAttached()
         val view = composeView ?: return
         val params = layoutParams ?: return
         val flag = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
@@ -2218,8 +2255,10 @@ class IslandOverlayController(private val context: Context) {
             // returns via musicPillToReturnTo() once the user leaves that app.
             if (signal is CutoutSignal.Music && shouldHideForPlayerApp()) {
                 playerAppHidden = true
+                forcedExpanded.value = null
+                expanded = false
                 currentEvent.value = null
-                removeOverlay()
+                syncWindowSize()
             }
             if (signal is CutoutSignal.Call && shouldHideForPhoneApp()) {
                 phoneAppHidden = true
