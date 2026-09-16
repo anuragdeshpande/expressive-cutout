@@ -128,6 +128,13 @@ If a feature seems to need one of these relaxed, stop and say so instead of doin
 
 - Branch from `dev` and open the PR against `dev`. `main` is protected and used for releases
   only.
+- Develop each feature in its own isolated feature branch (`feat/<name>`). Never cherry-pick or
+  mix other active feature branches into a feature branch.
+- The `integration` branch is the local collective branch containing all features combined.
+- **CRITICAL DEPLOYMENT RULE**: When building and pushing an APK to a real device via ADB for
+  testing, **always build and deploy from the `integration` branch**, never directly from an
+  isolated feature branch. Merge the feature branch into `integration` to test all capabilities
+  collectively.
 - Don't commit or push unless the human asks. When asked: one feature per commit, subject
   prefixed `[FEAT]` or `[FIX]`.
 - PR body is a short bullet list that goes straight to the point:
@@ -141,3 +148,4 @@ In this PR, I did:
 
 - Don't touch `versionCode` / `versionName`; releases are the maintainer's call.
 - Ask before adding a dependency.
+
