@@ -1,5 +1,6 @@
 package com.ekoehler.expressivecutout.ui.screen
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -20,7 +21,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
-import androidx.compose.material.icons.rounded.Computer
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -33,7 +33,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -54,8 +56,13 @@ sealed interface IntegrationsRoute : Serializable {
     /** Detail screen for configuring an app's preview rules and sub-filters. */
     data class AppRule(val packageName: String) : IntegrationsRoute
 
-    /** The Android Bridge QR pairing and connection status screen. */
-    data object AndroidBridge : IntegrationsRoute
+    /** The Macintosh Bridge QR pairing and connection status screen. */
+    data object MacintoshBridge : IntegrationsRoute
+
+    companion object {
+        /** Backwards-compatible alias for [MacintoshBridge]. */
+        val AndroidBridge: IntegrationsRoute get() = MacintoshBridge
+    }
 }
 
 /** Parent route for back navigation within the Integrations tab. */
@@ -63,13 +70,13 @@ val IntegrationsRoute.parent: IntegrationsRoute
     get() = when (this) {
         is IntegrationsRoute.AppRule -> IntegrationsRoute.NotificationPreviews
         is IntegrationsRoute.NotificationPreviews -> IntegrationsRoute.List
-        IntegrationsRoute.AndroidBridge -> IntegrationsRoute.List
+        IntegrationsRoute.MacintoshBridge -> IntegrationsRoute.List
         IntegrationsRoute.List -> IntegrationsRoute.List
     }
 
 /**
  * Top-level "Integrations" destination: showcases intelligent integrations like Notification Previews
- * and hardware continuity bridges like Android Bridge.
+ * and hardware continuity bridges like Macintosh Bridge.
  *
  * @param viewModel Application viewmodel managing global settings.
  * @param contentPadding Insets to prevent content collision with system scrims.
@@ -107,12 +114,12 @@ fun IntegrationsTab(
             )
         }
 
-        // Android Bridge Integration Card
+        // Macintosh Bridge Card
         Card(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(20.dp))
-                .clickable { onNavigate(IntegrationsRoute.AndroidBridge) },
+                .clickable { onNavigate(IntegrationsRoute.MacintoshBridge) },
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surface,
@@ -124,20 +131,14 @@ fun IntegrationsTab(
                     .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.size(48.dp),
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Rounded.Computer,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(26.dp),
-                        )
-                    }
-                }
+                Image(
+                    painter = painterResource(R.drawable.ic_droppy_logo),
+                    contentDescription = stringResource(R.string.bridge_card_title),
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(14.dp)),
+                    contentScale = ContentScale.Fit,
+                )
 
                 Spacer(Modifier.width(14.dp))
 

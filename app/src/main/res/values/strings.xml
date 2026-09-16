@@ -711,10 +711,10 @@
     <string name="notif_preview_detected_actions_title">Primary action</string>
     <string name="notif_preview_detected_actions_none">Automatic action selection is active. Specific action choices will appear once this app posts surfaceable actions.</string>
 
-    <!-- Android Bridge -->
-    <string name="bridge_card_title">Android Bridge</string>
+    <!-- Macintosh Bridge -->
+    <string name="bridge_card_title">Macintosh Bridge</string>
     <string name="bridge_card_desc">Connect and pair with Droppy on your Mac over local network</string>
-    <string name="bridge_screen_title">Android Bridge</string>
+    <string name="bridge_screen_title">Macintosh Bridge</string>
     <string name="bridge_screen_subtitle">Cross-device continuity with your Mac laptop running Droppy</string>
     <string name="bridge_unpaired_title">Pair with your Mac</string>
     <string name="bridge_unpaired_instruction">Open Droppy on your Mac, start pairing from the shelf widget, and scan the QR code shown on screen.</string>

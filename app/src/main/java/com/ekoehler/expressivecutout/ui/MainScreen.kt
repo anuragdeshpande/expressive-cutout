@@ -259,7 +259,7 @@ fun MainScreen(viewModel: AppViewModel = viewModel()) {
                                 viewModel = viewModel,
                                 contentPadding = contentPadding,
                             )
-                            IntegrationsRoute.AndroidBridge -> BridgePairingScreen(
+                            IntegrationsRoute.MacintoshBridge -> BridgePairingScreen(
                                 contentPadding = contentPadding,
                             )
                         }
@@ -326,7 +326,7 @@ fun MainScreen(viewModel: AppViewModel = viewModel()) {
                     HomeTab.Integrations -> when (integrationsRoute) {
                         is IntegrationsRoute.AppRule -> stringResource(R.string.notif_preview_apps_section)
                         IntegrationsRoute.NotificationPreviews -> stringResource(R.string.integration_notif_preview_title)
-                        IntegrationsRoute.AndroidBridge -> stringResource(R.string.bridge_screen_title)
+                        IntegrationsRoute.MacintoshBridge -> stringResource(R.string.bridge_screen_title)
                         else -> stringResource(R.string.integrations_title)
                     }
                     else -> when (settingsRoute) {
