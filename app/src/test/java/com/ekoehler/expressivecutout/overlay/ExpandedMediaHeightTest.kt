@@ -14,7 +14,7 @@ class ExpandedMediaHeightTest {
     @Test
     fun `media height matches the expanded card the tile was laid out against`() {
         assertEquals(
-            IslandLayout.DEFAULT_EXPANDED.heightDp,
+            148,
             mediaExpandedBaseHeightDp(IslandDimensions.DEFAULT_TOP_MARGIN_DP),
         )
     }

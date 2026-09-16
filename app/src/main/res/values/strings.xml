@@ -536,11 +536,13 @@
 
     <!-- Bottom navigation -->
     <string name="nav_settings">Settings</string>
+    <string name="nav_integrations">Integrations</string>
     <string name="nav_permissions">Permissions</string>
     <string name="nav_profile">Profile</string>
 
     <!-- Integrations -->
     <string name="integrations_title">Integrations</string>
+    <string name="integrations_subtitle">Extend your cutout with connected hardware and companion modules</string>
     <string name="integrations_system_events_title">System events</string>
     <string name="integration_volume_title">Volume overlay</string>
     <string name="integration_volume_subtitle">Volume changes &amp; ringer controls in the cutout</string>
@@ -636,7 +638,6 @@
     <string name="statusbar_preview_time">2:34</string>
     <string name="test_progress_complete_title">Download complete</string>
     <string name="test_progress_complete_text">document_preview.pdf</string>
-
     <!-- Integrations Tab & Notification Previews -->
     <string name="nav_integrations">Integrations</string>
     <string name="perm_sensitive_content_title">Sensitive message content</string>
@@ -712,4 +713,27 @@
     <string name="notif_preview_advanced_settings">Advanced settings</string>
     <string name="notif_preview_detected_actions_title">Primary action</string>
     <string name="notif_preview_detected_actions_none">Automatic action selection is active. Specific action choices will appear once this app posts surfaceable actions.</string>
+
+    <!-- Android Bridge -->
+    <string name="bridge_card_title">Android Bridge</string>
+    <string name="bridge_card_desc">Connect and pair with Droppy on your Mac over local network</string>
+    <string name="bridge_screen_title">Android Bridge</string>
+    <string name="bridge_screen_subtitle">Cross-device continuity with your Mac laptop running Droppy</string>
+    <string name="bridge_unpaired_title">Pair with your Mac</string>
+    <string name="bridge_unpaired_instruction">Open Droppy on your Mac, start pairing from the shelf widget, and scan the QR code shown on screen.</string>
+    <string name="bridge_action_scan_qr">Scan QR Code</string>
+    <string name="bridge_action_cancel">Cancel</string>
+    <string name="bridge_status_connecting">Connecting to Mac…</string>
+    <string name="bridge_confirm_title">Confirm Code</string>
+    <string name="bridge_confirm_desc">Verify that this 6-digit code matches the one displayed on %1$s:</string>
+    <string name="bridge_action_match">Numbers Match</string>
+    <string name="bridge_waiting_peer_confirm">Confirmed! Waiting for %1$s to confirm…</string>
+    <string name="bridge_status_paired_connected">Paired · Connected</string>
+    <string name="bridge_status_paired_offline">Paired · Offline</string>
+    <string name="bridge_endpoint_label">Endpoint: %1$s</string>
+    <string name="bridge_service_label">Service: %1$s</string>
+    <string name="bridge_action_reconnect">Reconnect</string>
+    <string name="bridge_action_forget_device">Forget Device</string>
+    <string name="bridge_error_offer_title">Invalid Pairing Offer</string>
+    <string name="bridge_action_rescan">Scan Again</string>
 </resources>

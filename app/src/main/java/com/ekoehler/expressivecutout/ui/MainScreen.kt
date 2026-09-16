@@ -57,6 +57,10 @@ import com.ekoehler.expressivecutout.core.SystemEventType
 import com.ekoehler.expressivecutout.ui.components.BackNavBar
 import com.ekoehler.expressivecutout.ui.components.ExpressiveNavBar
 import com.ekoehler.expressivecutout.ui.components.NavBarItem
+import androidx.compose.material.icons.rounded.Extension
+import com.ekoehler.expressivecutout.bridge.ui.screen.BridgePairingScreen
+import com.ekoehler.expressivecutout.ui.screen.IntegrationsRoute
+import com.ekoehler.expressivecutout.ui.screen.IntegrationsTab
 import com.ekoehler.expressivecutout.ui.screen.PermissionsTab
 import com.ekoehler.expressivecutout.ui.screen.ProfileRoute
 import com.ekoehler.expressivecutout.ui.screen.ProfileTab
@@ -66,10 +70,6 @@ import com.ekoehler.expressivecutout.ui.screen.parent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
-
-import androidx.compose.material.icons.rounded.Extension
-import com.ekoehler.expressivecutout.ui.screen.IntegrationsRoute
-import com.ekoehler.expressivecutout.ui.screen.IntegrationsTab
 
 /**
  * The four top-level tabs, in the order the nav bar shows them, each carrying its own label and
@@ -259,6 +259,9 @@ fun MainScreen(viewModel: AppViewModel = viewModel()) {
                                 viewModel = viewModel,
                                 contentPadding = contentPadding,
                             )
+                            IntegrationsRoute.AndroidBridge -> BridgePairingScreen(
+                                contentPadding = contentPadding,
+                            )
                         }
 
                         HomeTab.Permissions -> PermissionsTab(contentPadding, viewModel)
@@ -323,6 +326,7 @@ fun MainScreen(viewModel: AppViewModel = viewModel()) {
                     HomeTab.Integrations -> when (integrationsRoute) {
                         is IntegrationsRoute.AppRule -> stringResource(R.string.notif_preview_apps_section)
                         IntegrationsRoute.NotificationPreviews -> stringResource(R.string.integration_notif_preview_title)
+                        IntegrationsRoute.AndroidBridge -> stringResource(R.string.bridge_screen_title)
                         else -> stringResource(R.string.integrations_title)
                     }
                     else -> when (settingsRoute) {
