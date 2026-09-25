@@ -11,6 +11,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -128,7 +129,7 @@ private enum class PreviewScenario(
         title = "Chat",
         packageName = "com.slack",
         appName = "Slack",
-        smartTitle = "New message from Alex Vance",
+        smartTitle = "Review the pull request before deployment",
         actionLabel = "Reply",
         actionIcon = Icons.AutoMirrored.Rounded.Send,
         isSensitive = true,
@@ -168,6 +169,7 @@ private fun scenarioToSignal(context: Context, scenario: PreviewScenario, allowS
             intent = dummyIntent,
         )
     )
+    val contextTag = if (scenario == PreviewScenario.Chat) "${scenario.appName} • Alex Vance" else scenario.appName
     return CutoutSignal.Notification(
         packageName = scenario.packageName,
         title = scenario.smartTitle,
@@ -182,7 +184,7 @@ private fun scenarioToSignal(context: Context, scenario: PreviewScenario, allowS
         progressData = null,
         isSilent = false,
         mode = NotificationMode.PREVIEW,
-        previewContextTag = scenario.appName,
+        previewContextTag = contextTag,
         previewSummary = if (isMasked) context.getString(R.string.notif_preview_privacy_hidden_preview) else scenario.smartTitle,
         isContentMasked = isMasked,
         primaryAction = actions.firstOrNull(),
@@ -394,10 +396,10 @@ fun NotificationPreviewScreen(
                                 Surface(
                                     modifier = Modifier
                                         .fillMaxWidth(baseFraction * tuckWidth)
-                                        .height(56.dp)
+                                        .height(58.dp)
                                         .offset(y = tuckY)
                                         .graphicsLayer { alpha = fProgress },
-                                    shape = RoundedCornerShape(28.dp),
+                                    shape = RoundedCornerShape(29.dp),
                                     color = tuckColor,
                                     border = BorderStroke(1.dp, tuckBorder),
                                 ) {}
@@ -412,9 +414,9 @@ fun NotificationPreviewScreen(
                                 Surface(
                                     modifier = Modifier
                                         .fillMaxWidth(baseFraction * peek3Width)
-                                        .height(56.dp)
+                                        .height(58.dp)
                                         .offset(y = peek3Y),
-                                    shape = RoundedCornerShape(28.dp),
+                                    shape = RoundedCornerShape(29.dp),
                                     color = peek3Color,
                                     border = BorderStroke(1.dp, peek3Border),
                                 ) {}
@@ -430,9 +432,9 @@ fun NotificationPreviewScreen(
                                 Surface(
                                     modifier = Modifier
                                         .fillMaxWidth(baseFraction * peek2Width)
-                                        .height(56.dp)
+                                        .height(58.dp)
                                         .offset(y = peek2Y),
-                                    shape = RoundedCornerShape(28.dp),
+                                    shape = RoundedCornerShape(29.dp),
                                     color = peek2Color,
                                     border = BorderStroke(1.dp, peek2Border),
                                 ) {
@@ -453,14 +455,14 @@ fun NotificationPreviewScreen(
                             Surface(
                                 modifier = Modifier
                                     .fillMaxWidth(baseFraction)
-                                    .height(56.dp)
+                                    .height(58.dp)
                                     .graphicsLayer {
                                         scaleX = 1f - fProgress * 0.04f
                                         scaleY = 1f - fProgress * 0.04f
                                         translationY = -fProgress * 28.dp.toPx()
                                         alpha = (1f - fProgress * 1.3f).coerceIn(0f, 1f)
                                     },
-                                shape = RoundedCornerShape(28.dp),
+                                shape = RoundedCornerShape(29.dp),
                                 color = Color(0xFF0C0D10),
                                 border = BorderStroke(1.dp, Color(0xFF2E3138)),
                             ) {
@@ -958,7 +960,7 @@ private fun SimulatorCardContent(
     Row(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .padding(horizontal = 12.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -973,7 +975,7 @@ private fun SimulatorCardContent(
                     imageVector = if (scenario == PreviewScenario.TwoFactor) Icons.Rounded.Security else Icons.Rounded.Forum,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.size(18.dp),
+                    modifier = Modifier.size(20.dp),
                 )
             }
         }
@@ -981,36 +983,57 @@ private fun SimulatorCardContent(
         // Context and summary text
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(1.dp, Alignment.CenterVertically),
+            verticalArrangement = Arrangement.Center,
         ) {
+            val contextTag = if (scenario == PreviewScenario.Chat) "${scenario.appName} • Alex Vance" else scenario.appName
+
+            // Header line
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
             ) {
                 Text(
-                    text = "${scenario.appName} • Now",
+                    text = contextTag,
                     color = MaterialTheme.colorScheme.primary,
-                    fontSize = 11.sp,
+                    fontSize = 11.5.sp,
+                    lineHeight = 15.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
+                Text(
+                    text = "•",
+                    color = Color.White.copy(alpha = 0.35f),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = "Now",
+                    color = Color.White.copy(alpha = 0.55f),
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp,
+                    fontWeight = FontWeight.Normal,
+                )
                 if (stackCount > 1) {
                     Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = Color.White.copy(alpha = 0.15f),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
                     ) {
                         Text(
                             text = "$stackIndex/$stackCount",
-                            color = Color.White.copy(alpha = 0.9f),
+                            color = MaterialTheme.colorScheme.primary,
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.5.dp),
                         )
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(1.5.dp))
+
+            // Summary line
             if (isContentMasked) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -1019,49 +1042,64 @@ private fun SimulatorCardContent(
                     Icon(
                         imageVector = Icons.Rounded.Lock,
                         contentDescription = null,
-                        tint = Color.White.copy(alpha = 0.65f),
-                        modifier = Modifier.size(11.dp),
+                        tint = Color.White.copy(alpha = 0.55f),
+                        modifier = Modifier.size(12.dp),
                     )
                     Text(
                         text = stringResource(R.string.notif_preview_privacy_hidden_preview),
-                        color = Color.White.copy(alpha = 0.65f),
+                        color = Color.White.copy(alpha = 0.60f),
                         fontSize = 12.sp,
+                        lineHeight = 16.sp,
+                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
                         maxLines = 1,
+                        modifier = Modifier.basicMarquee(
+                            iterations = Int.MAX_VALUE,
+                            initialDelayMillis = 1200,
+                        ),
                     )
                 }
             } else {
                 Text(
                     text = scenario.smartTitle,
-                    color = Color.White,
+                    color = Color.White.copy(alpha = 0.95f),
                     fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    fontWeight = FontWeight.Normal,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.basicMarquee(
+                        iterations = Int.MAX_VALUE,
+                        initialDelayMillis = 1200,
+                    ),
                 )
             }
         }
 
-        // Action chip
-        val isApprove = scenario.actionLabel == "Approve"
+        // Action button (icon-only, matching live cutout sample)
+        val isApprove = scenario.actionLabel.contains("Approve", ignoreCase = true)
+        val isReply = scenario.actionLabel.contains("Reply", ignoreCase = true)
+        val buttonContainer = when {
+            isApprove -> MaterialTheme.colorScheme.primaryContainer
+            isReply -> MaterialTheme.colorScheme.primaryContainer
+            else -> MaterialTheme.colorScheme.secondaryContainer
+        }
+        val buttonContentColor = when {
+            isApprove -> MaterialTheme.colorScheme.onPrimaryContainer
+            isReply -> MaterialTheme.colorScheme.onPrimaryContainer
+            else -> MaterialTheme.colorScheme.onSecondaryContainer
+        }
+
         Surface(
-            shape = RoundedCornerShape(14.dp),
-            color = if (isApprove) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer,
+            shape = CircleShape,
+            color = buttonContainer,
+            modifier = Modifier.size(34.dp),
+            tonalElevation = 2.dp,
         ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
+            Box(contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = scenario.actionIcon,
-                    contentDescription = null,
-                    tint = if (isApprove) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer,
-                    modifier = Modifier.size(12.dp),
-                )
-                Text(
-                    text = scenario.actionLabel,
-                    color = if (isApprove) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
+                    contentDescription = scenario.actionLabel,
+                    tint = buttonContentColor,
+                    modifier = Modifier.size(16.dp),
                 )
             }
         }

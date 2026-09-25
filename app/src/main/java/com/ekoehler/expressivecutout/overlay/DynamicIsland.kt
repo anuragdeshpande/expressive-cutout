@@ -33,6 +33,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -4151,7 +4152,7 @@ private fun NotificationPreviewContent(
     Row(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 12.dp, vertical = 7.dp),
+            .padding(horizontal = 12.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -4160,9 +4161,7 @@ private fun NotificationPreviewContent(
 
         // Center 2-row context and summary
         Column(
-            modifier = Modifier
-                .weight(1f)
-                .padding(vertical = 1.dp),
+            modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.Center,
         ) {
             val appLabel = event.appName?.takeIf { it.isNotBlank() }
@@ -4179,6 +4178,7 @@ private fun NotificationPreviewContent(
                     text = appLabel,
                     color = MaterialTheme.colorScheme.primary,
                     fontSize = 11.5.sp,
+                    lineHeight = 15.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -4195,6 +4195,7 @@ private fun NotificationPreviewContent(
                         text = compactTime,
                         color = Color.White.copy(alpha = 0.55f),
                         fontSize = 11.sp,
+                        lineHeight = 14.sp,
                         fontWeight = FontWeight.Normal,
                     )
                 }
@@ -4214,7 +4215,7 @@ private fun NotificationPreviewContent(
                 }
             }
 
-            Spacer(modifier = Modifier.height(2.dp))
+            Spacer(modifier = Modifier.height(1.5.dp))
 
             // Summary line
             if (event.isContentMasked || preview.isContentMasked) {
@@ -4231,20 +4232,28 @@ private fun NotificationPreviewContent(
                     Text(
                         text = preview.summary,
                         color = Color.White.copy(alpha = 0.60f),
-                        fontSize = 12.5.sp,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
                         fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.basicMarquee(
+                            iterations = Int.MAX_VALUE,
+                            initialDelayMillis = 1200,
+                        ),
                     )
                 }
             } else {
                 Text(
                     text = preview.summary,
                     color = Color.White.copy(alpha = 0.95f),
-                    fontSize = 12.5.sp,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
                     fontWeight = FontWeight.Normal,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.basicMarquee(
+                        iterations = Int.MAX_VALUE,
+                        initialDelayMillis = 1200,
+                    ),
                 )
             }
         }

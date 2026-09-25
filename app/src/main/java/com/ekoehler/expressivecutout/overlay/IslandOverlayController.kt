@@ -1912,11 +1912,11 @@ class IslandOverlayController(private val context: Context) {
                 )
                 layout.collapsed.copy(
                     widthPercent = widthPct,
-                    heightDp = 56,
-                    cornerTopLeftDp = 28,
-                    cornerTopRightDp = 28,
-                    cornerBottomLeftDp = 28,
-                    cornerBottomRightDp = 28,
+                    heightDp = 58,
+                    cornerTopLeftDp = 29,
+                    cornerTopRightDp = 29,
+                    cornerBottomLeftDp = 29,
+                    cornerBottomRightDp = 29,
                 )
             }
             else -> layout.collapsed
