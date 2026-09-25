@@ -45,4 +45,22 @@ class AppearanceSettingsTest {
             settings.showVirtualLed,
         )
     }
+
+    @Test
+    fun `default appearance settings disable prefer dynamic icon color`() {
+        val settings = AppearanceSettings()
+        assertFalse(
+            "Prefer dynamic icon color should default to false",
+            settings.preferDynamicIconColor,
+        )
+    }
+
+    @Test
+    fun `custom appearance settings preserve prefer dynamic icon color toggle`() {
+        val settings = AppearanceSettings(preferDynamicIconColor = true)
+        assertTrue(
+            "Prefer dynamic icon color should be configurable",
+            settings.preferDynamicIconColor,
+        )
+    }
 }

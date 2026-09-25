@@ -351,7 +351,7 @@ private const val MEDIA_EXPANDED_BOTTOM_PADDING_DP = 16
  * The tile packs artwork, track text, the progress bar and the transport row into one column, and at
  * the bare content height they read as cramped against each other and the cutout.
  */
-private const val MEDIA_EXPANDED_EXTRA_HEIGHT_DP = 40
+internal const val MEDIA_EXPANDED_EXTRA_HEIGHT_DP = 40
 
 /**
  * The expanded music tile's base height, taken from its own content rather than the user's expanded
@@ -5728,6 +5728,9 @@ internal fun AlbumArt(
 private fun albumArtShape(round: Boolean, size: Dp) =
     if (round) CircleShape else RoundedCornerShape(size * 0.24f)
 
+/**
+ * Renders the circular status badge or raw app launcher icon representing an [IslandEvent].
+ */
 @Composable
 internal fun IconBadge(
     event: IslandEvent,
@@ -5770,11 +5773,17 @@ internal fun IconBadge(
             glyphColor = event.accent
         }
     }
-    Box(
-        modifier = modifier
+    val isUntintedRaster = event.icon is IslandIcon.Raster && !event.icon.tint
+    val boxModifier = if (isUntintedRaster) {
+        modifier.size(badgeSize)
+    } else {
+        modifier
             .size(badgeSize)
             .clip(CircleShape)
-            .background(badgeColor),
+            .background(badgeColor)
+    }
+    Box(
+        modifier = boxModifier,
         contentAlignment = Alignment.Center,
     ) {
         when (val icon = event.icon) {
@@ -5785,14 +5794,17 @@ internal fun IconBadge(
                 modifier = Modifier.size(iconSize),
             )
 
-            // Art fills the badge disc, whether it keeps its own colours or a monochrome glyph
-            // (a notification's small icon) is recoloured to the badge's ink.
+            // Untinted app launcher art keeps its unclipped silhouette, while tinted glyphs sit in the badge disc
             is IslandIcon.Raster -> androidx.compose.foundation.Image(
                 bitmap = icon.bitmap,
                 contentDescription = null,
-                contentScale = if (icon.tint) ContentScale.Fit else ContentScale.Crop,
+                contentScale = ContentScale.Fit,
                 colorFilter = if (icon.tint) ColorFilter.tint(glyphColor) else null,
-                modifier = Modifier.size(badgeSize * 0.78f).clip(CircleShape),
+                modifier = if (icon.tint) {
+                    Modifier.size(badgeSize * 0.78f).clip(CircleShape)
+                } else {
+                    Modifier.size(badgeSize)
+                },
             )
 
             is IslandIcon.Lottie -> {
