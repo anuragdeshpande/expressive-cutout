@@ -164,6 +164,46 @@ fun IslandDimensions.asSplitCallCutout(
     )
 }
 
+/**
+ * The split HUD's pill (volume or brightness when a satellite bubble is active beside it): sized and
+ * placed around the physical camera hole like [asSplitCallCutout] and [asTinyCutout].
+ * [contentWidthDp] of badge and counter text sits on the visible side of the camera, ending where
+ * the camera hole begins, and the pill runs on past the hole, clearing it by [TINY_CAMERA_GAP_DP] so
+ * the satellite bubble can park beside it without crowding the camera.
+ *
+ * @param displayWidthDp the screen width, since [IslandDimensions] stores width as a percentage of it.
+ * @param contentWidthDp the width of the badge, gap, numeric percentage, and camera margin.
+ * @param cameraRightEdgeDp the camera cutout's right edge measured from the screen's horizontal
+ *   centre, or null when the device won't report one — then [DEFAULT_CAMERA_RADIUS_DP] stands in.
+ * @param satelliteOnLeft true when the satellite bubble is parked to the left of the cutout.
+ */
+fun IslandDimensions.asSplitHudCutout(
+    displayWidthDp: Int,
+    contentWidthDp: Float,
+    cameraRightEdgeDp: Float? = null,
+    satelliteOnLeft: Boolean = false,
+): IslandDimensions {
+    val cameraRight = cameraRightEdgeDp ?: DEFAULT_CAMERA_RADIUS_DP
+    val widthDp = contentWidthDp + cameraRight * 2f + TINY_CAMERA_GAP_DP
+    val percent = if (displayWidthDp > 0) (widthDp * 100f / displayWidthDp).roundToInt() else widthPercent
+    val offsetX = if (satelliteOnLeft) {
+        ((contentWidthDp - TINY_CAMERA_GAP_DP) / 2f).roundToInt()
+    } else {
+        ((TINY_CAMERA_GAP_DP - contentWidthDp) / 2f).roundToInt()
+    }
+    return IslandDimensions.of(
+        widthPercent = percent,
+        heightDp = heightDp,
+        offsetXDp = offsetX,
+        offsetYDp = offsetYDp,
+        cornerTopLeftDp = cornerTopLeftDp,
+        cornerTopRightDp = cornerTopRightDp,
+        cornerBottomLeftDp = cornerBottomLeftDp,
+        cornerBottomRightDp = cornerBottomRightDp,
+        topMarginDp = topMarginDp,
+    )
+}
+
 /** How much wider than it is tall the tiny cutout is — just enough for its glyph. */
 private const val TINY_WIDTH_RATIO = 1.8f
 

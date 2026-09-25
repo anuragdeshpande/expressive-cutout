@@ -162,7 +162,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp as lerpDp
-import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.airbnb.lottie.LottieProperty
@@ -212,6 +211,7 @@ import com.ekoehler.expressivecutout.data.IslandDimensions
 import com.ekoehler.expressivecutout.data.IslandLayout
 import com.ekoehler.expressivecutout.data.asCallCutout
 import com.ekoehler.expressivecutout.data.asSplitCallCutout
+import com.ekoehler.expressivecutout.data.asSplitHudCutout
 import com.ekoehler.expressivecutout.data.asTinyCutout
 import com.ekoehler.expressivecutout.data.MusicButtonStyle
 import com.ekoehler.expressivecutout.data.MusicRightButtonAction
@@ -655,6 +655,17 @@ fun DynamicIsland(
         callSplitContentWidthDp(collapsed.heightDp, density, callLongClock)
     }
 
+    // A volume or brightness HUD with a secondary satellite shrinks to a split pill making room for
+    // the bubble while parking its badge and counter clear of the camera hole.
+    val hudSplit = usesSplitHudCutout(
+        event = shownEvent,
+        satellite = satellite,
+        expanded = isExpanded,
+    ) && !isStickToCamera
+    val hudSplitContentDp = remember(collapsed.heightDp, density) {
+        hudSplitContentWidthDp(collapsed.heightDp, density)
+    }
+
     val isPreview = shownEvent?.preview != null && !isExpanded && !isCall && !emptyPill
     val previewWidthPercent = remember(
         shownEvent?.id,
@@ -701,6 +712,12 @@ fun DynamicIsland(
         // around the camera hole so its badge and clock never end up behind it.
         callSplit -> collapsed.asSplitCallCutout(displayWidthDp, callSplitContentDp, cameraRightEdgeDp)
         isCall -> collapsed.asCallCutout(callWidthPercent)
+        hudSplit -> collapsed.asSplitHudCutout(
+            displayWidthDp = displayWidthDp,
+            contentWidthDp = hudSplitContentDp,
+            cameraRightEdgeDp = cameraRightEdgeDp,
+            satelliteOnLeft = satellitePosition == SatellitePosition.LEFT,
+        )
         isPreview -> collapsed.copy(
             widthPercent = previewWidthPercent,
             heightDp = 56,
@@ -886,7 +903,8 @@ fun DynamicIsland(
     // or fading out, but clears it for the resting empty pill.
     val hasTrailingContent = !emptyPill && (event ?: shownEvent)?.let {
         it.timer != null || it.progressData != null ||
-            (it.media?.rightButton == true && !it.media.miniPlayer)
+            (it.media?.rightButton == true && !it.media.miniPlayer) ||
+            (it.isHudEvent && !hudSplit)
     } == true
 
     // Room for dots beside that content: the pill grows to the right by this much and the content is
@@ -900,14 +918,15 @@ fun DynamicIsland(
     // With a bubble up, the pair shares the normal cutout's width rather than growing past it: the
     // pill gives up the bubble's diameter plus the gap, and the two together still span exactly the
     // width the user chose. Both the width and the offset below animate, so the pill visibly makes
-    // room rather than jumping.
+    // room rather than jumping. HUD events split with a satellite compute their geometry via
+    // asSplitHudCutout, which already sizes and offsets the pill around the camera hole.
     val satelliteSharing = satellite != null && !isExpanded && !isCall && !isStickToCamera &&
         !isTiny
-    val satelliteSplitDp = if (satelliteSharing) collapsed.heightDp + SATELLITE_GAP_DP else 0
+    val satelliteSplitDp = if (satelliteSharing && !hudSplit) collapsed.heightDp + SATELLITE_GAP_DP else 0
     // The pair stays centred on the span the pill had to itself, so the pill's own centre steps away
     // from the side the bubble takes by half of what it gave up.
     val satelliteShiftDp = when {
-        !satelliteSharing -> 0f
+        !satelliteSharing || hudSplit -> 0f
         satellitePosition == SatellitePosition.LEFT -> satelliteSplitDp / 2f
         else -> -satelliteSplitDp / 2f
     }
@@ -1290,6 +1309,8 @@ fun DynamicIsland(
                                         trailingInsetDp = collapsedTrailingInsetDp,
                                         iconPop = iconPop,
                                         statusDotEnabled = statusDotEnabled && appearance.showVirtualLed,
+                                        isSatelliteSplit = hudSplit,
+                                        satellitePosition = satellitePosition,
                                     )
                                 }
                             }
@@ -1638,7 +1659,7 @@ fun IslandPreview(
                 },
             )
         } else {
-            CollapsedContent(event, heightDp, showVirtualLed = appearance.showVirtualLed)
+            CollapsedContent(event, heightDp, statusDotEnabled = appearance.showVirtualLed)
         }
     }
 }
@@ -1817,17 +1838,52 @@ internal fun EventBadge(
 }
 
 /**
- * The collapsed pill's contents: the badge, the label, and whatever the live tiles want to put
- * beside them. Sized to [heightDp] so it fits the user's own geometry.
+ * Renders the live animated percentage counter for volume or brightness HUD events.
+ */
+@Composable
+private fun HudLiveCounter(
+    event: IslandEvent,
+    heightDp: Int,
+    modifier: Modifier = Modifier,
+) {
+    if (event.volume != null) {
+        val liveVolume by VolumeBus.state.collectAsStateWithLifecycle()
+        RollingCounterText(
+            value = liveVolume.mediaVolumePercent,
+            suffix = "%",
+            color = event.colorOverride?.resolve() ?: event.trailingTextColor ?: LocalContentColor.current,
+            fontSize = (heightDp * 0.34f).sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = modifier,
+        )
+    } else if (event.actionIntentAction == android.provider.Settings.ACTION_DISPLAY_SETTINGS) {
+        val liveBrightness by BrightnessBus.state.collectAsStateWithLifecycle()
+        RollingCounterText(
+            value = liveBrightness.brightnessPercent,
+            suffix = "%",
+            color = event.colorOverride?.resolve() ?: event.trailingTextColor ?: LocalContentColor.current,
+            fontSize = (heightDp * 0.34f).sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = modifier,
+        )
+    }
+}
+
+/**
+ * The resting, collapsed island: an icon / badge on the leading edge and optional text / status dot
+ * on the trailing edge. Sized off [heightDp] — the user's own collapsed height — so it scales with
+ * their geometry.
  *
- * @param trailingInsetDp extra room to leave on the trailing edge, so whatever the caller draws
+ * @param trailingInsetDp extra end padding passed in by the caller when something rendered after this
  *   there — today the permission dots — isn't overlapped by the timer's remaining time or the
  *   progress ring.
  * @param iconPop scale for the badge's arrival pop, driven by the caller. Hoisted rather than owned
  *   here because the collapsed content re-enters composition every time the island collapses back
  *   from expanded, which would otherwise re-fire the pop on a collapse. Null (the settings preview)
  *   leaves the badge at rest.
- * @param showVirtualLed whether to show the pulsing status light on the trailing edge for system events.
+ * @param statusDotEnabled whether to show the pulsing status light on the trailing edge for system events.
+ * @param isSatelliteSplit whether this pill is sharing its span with a secondary satellite bubble.
+ * @param satellitePosition which side the satellite bubble occupies.
  */
 @Composable
 private fun CollapsedContent(
@@ -1837,6 +1893,8 @@ private fun CollapsedContent(
     trailingInsetDp: Int = 0,
     iconPop: Animatable<Float, AnimationVector1D>? = null,
     statusDotEnabled: Boolean = true,
+    isSatelliteSplit: Boolean = false,
+    satellitePosition: SatellitePosition = SatellitePosition.RIGHT,
 ) {
     // The music tile's single transport button, opposite its cover. Never on the stuck-to-camera
     // pill (barely wider than the badge) nor beside the tiny player, which has no room for it.
@@ -1844,33 +1902,68 @@ private fun CollapsedContent(
         ?.takeIf { it.rightButton && !it.miniPlayer && !isStickToCamera }
         ?.rightButtonAction
 
+    val isSplitHud = isSatelliteSplit && event.isHudEvent
+    val hudOnRight = isSplitHud && satellitePosition == SatellitePosition.LEFT
+
     Box(modifier = Modifier.fillMaxSize()) {
-        // Scaled after the padding so the pop grows the badge about its own centre instead of
-        // dragging it in from the pill's edge, and read inside the layer block so each frame redraws
-        // without recomposing the pill.
+        val popModifier = if (iconPop != null) {
+            Modifier.graphicsLayer {
+                scaleX = iconPop.value
+                scaleY = iconPop.value
+            }
+        } else {
+            Modifier
+        }
         val placement = Modifier
             .align(if (isStickToCamera) Alignment.BottomCenter else Alignment.CenterStart)
             .padding(
                 start = if (isStickToCamera) 0.dp else (heightDp * 0.16f).dp,
                 bottom = if (isStickToCamera) (heightDp * 0.14f).dp else 0.dp,
             )
-            .then(
-                if (iconPop != null) {
-                    Modifier.graphicsLayer {
-                        scaleX = iconPop.value
-                        scaleY = iconPop.value
-                    }
-                } else {
-                    Modifier
-                }
+            .then(popModifier)
+
+        // The split HUD pill parks the badge and live counter together on the visible span clear
+        // of the camera cutout, while normal layout places the badge on the leading edge.
+        if (isSplitHud && !hudOnRight) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(start = (heightDp * 0.16f).dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy((heightDp * HUD_SPLIT_TEXT_GAP_FRACTION).dp),
+            ) {
+                EventBadge(
+                    event = event,
+                    badgeSize = badgeSizeFor(heightDp),
+                    iconSize = badgeIconSizeFor(heightDp),
+                    modifier = popModifier,
+                )
+                HudLiveCounter(event = event, heightDp = heightDp)
+            }
+        } else if (isSplitHud && hudOnRight) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = (heightDp * 0.16f).dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy((heightDp * HUD_SPLIT_TEXT_GAP_FRACTION).dp),
+            ) {
+                EventBadge(
+                    event = event,
+                    badgeSize = badgeSizeFor(heightDp),
+                    iconSize = badgeIconSizeFor(heightDp),
+                    modifier = popModifier,
+                )
+                HudLiveCounter(event = event, heightDp = heightDp)
+            }
+        } else {
+            EventBadge(
+                event = event,
+                badgeSize = badgeSizeFor(heightDp),
+                iconSize = badgeIconSizeFor(heightDp),
+                modifier = placement,
             )
-        // The music tile shows album art, the phone tile the caller's photo, on the normal cutout.
-        EventBadge(
-            event = event,
-            badgeSize = badgeSizeFor(heightDp),
-            iconSize = badgeIconSizeFor(heightDp),
-            modifier = placement,
-        )
+        }
         // The timer tile shows the remaining time on the trailing edge, opposite its icon.
         if (event.timer != null && !isStickToCamera) {
             timerRemainingText()?.let { remaining ->
@@ -1907,28 +2000,12 @@ private fun CollapsedContent(
             )
         }
         // Trailing text (e.g. battery percentage, brightness, volume) or radiating status dot
-        if (event.timer == null && event.progressData == null && rightButton == null && !isStickToCamera) {
+        if (event.timer == null && event.progressData == null && rightButton == null && !isStickToCamera && !isSplitHud) {
             val trailingInt = event.trailingText?.removeSuffix("%")?.toIntOrNull()
-            if (event.volume != null) {
-                val liveVolume by VolumeBus.state.collectAsStateWithLifecycle()
-                RollingCounterText(
-                    value = liveVolume.mediaVolumePercent,
-                    suffix = "%",
-                    color = event.colorOverride?.resolve() ?: event.trailingTextColor ?: LocalContentColor.current,
-                    fontSize = (heightDp * 0.34f).sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = (heightDp * 0.20f).dp),
-                )
-            } else if (event.actionIntentAction == android.provider.Settings.ACTION_DISPLAY_SETTINGS) {
-                val liveBrightness by BrightnessBus.state.collectAsStateWithLifecycle()
-                RollingCounterText(
-                    value = liveBrightness.brightnessPercent,
-                    suffix = "%",
-                    color = event.colorOverride?.resolve() ?: event.trailingTextColor ?: LocalContentColor.current,
-                    fontSize = (heightDp * 0.34f).sp,
-                    fontWeight = FontWeight.SemiBold,
+            if (event.isHudEvent) {
+                HudLiveCounter(
+                    event = event,
+                    heightDp = heightDp,
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .padding(end = (heightDp * 0.20f).dp),
@@ -3884,6 +3961,26 @@ internal fun callSplitContentWidthDp(heightDp: Int, density: Float, longClock: B
     val sample = if (longClock) CALL_SPLIT_DURATION_SAMPLE_LONG else CALL_SPLIT_DURATION_SAMPLE
     return fixedDp + paint.measureText(sample) / density
 }
+
+/**
+ * The room the split HUD pill's content claims on its leading side — the badge, the gap, the
+ * percentage counter text, and the camera clearance — which [asSplitHudCutout] parks beside the camera.
+ */
+internal fun hudSplitContentWidthDp(heightDp: Int, density: Float): Float {
+    val fixedDp = heightDp * (COLLAPSED_BADGE_INSET_FRACTION + BADGE_SIZE_FRACTION +
+        HUD_SPLIT_TEXT_GAP_FRACTION) + HUD_SPLIT_CONTENT_CAMERA_GAP_DP
+    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = heightDp * 0.34f * density
+        typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+    }
+    return fixedDp + paint.measureText("100%") / density
+}
+
+/** Gap between the badge and counter text in the split HUD pill. */
+private const val HUD_SPLIT_TEXT_GAP_FRACTION = 0.12f
+
+/** Clearance kept between the split HUD content and the camera hole. */
+private const val HUD_SPLIT_CONTENT_CAMERA_GAP_DP = 8
 
 /**
  * Metrics for the two-row incoming-call layout (caller row over Take / Hang up buttons). The layout

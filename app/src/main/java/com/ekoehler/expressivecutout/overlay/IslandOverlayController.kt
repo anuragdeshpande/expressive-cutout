@@ -70,6 +70,7 @@ import com.ekoehler.expressivecutout.data.IslandLayout
 import com.ekoehler.expressivecutout.data.LayoutPreferences
 import com.ekoehler.expressivecutout.data.asCallCutout
 import com.ekoehler.expressivecutout.data.asSplitCallCutout
+import com.ekoehler.expressivecutout.data.asSplitHudCutout
 import com.ekoehler.expressivecutout.data.asTinyCutout
 import com.ekoehler.expressivecutout.data.AssistantTilePreferences
 import com.ekoehler.expressivecutout.data.AssistantTileSettings
@@ -1587,6 +1588,7 @@ class IslandOverlayController(private val context: Context) {
         if (currentEvent.value?.call != null) return 0
         // The tiny cutout has no width to give away.
         if (isTinyTile()) return 0
+        if (isSplitHud()) return 0
         if (isLandscapeSplitSuppressed()) return 0
         return layoutState.value.collapsed.heightDp + SATELLITE_GAP_DP
     }
@@ -1846,6 +1848,15 @@ class IslandOverlayController(private val context: Context) {
             expanded && event?.media != null ->
                 layout.expanded.copy(heightDp = mediaExpandedBaseHeightDp(layout.expanded.topMarginDp))
             expanded -> layout.expanded
+            isSplitHud() -> {
+                val contentDp = hudSplitContentWidthDp(layout.collapsed.heightDp, density)
+                layout.collapsed.asSplitHudCutout(
+                    displayWidthDp = displayWidthDp.value,
+                    contentWidthDp = contentDp,
+                    cameraRightEdgeDp = cameraRightEdgeDp.value,
+                    satelliteOnLeft = behaviourState.value.satellitePosition == SatellitePosition.LEFT,
+                )
+            }
             // "Mini player" / "Mini call" shrink the normal cutout to the tiny pill, so the window
             // and the touchable region have to shrink with it.
             isTinyTile() -> layout.collapsed.asTinyCutout(displayWidthDp.value, cameraRightEdgeDp.value)
@@ -1922,6 +1933,21 @@ class IslandOverlayController(private val context: Context) {
         expanded = expanded,
         tiny = isTinyTile(),
     )
+
+    /**
+     * Whether the active volume or brightness HUD is drawn split beside a satellite.
+     * Mirrors [usesSplitHudCutout] so the window dimensions and touchable region match what
+     * [DynamicIsland] renders.
+     */
+    private fun isSplitHud(): Boolean {
+        val isStickToCamera = orientationState.value == Configuration.ORIENTATION_LANDSCAPE &&
+            behaviourState.value.horizontalCutoutMode == HorizontalCutoutMode.STICK_TO_CAMERA
+        return usesSplitHudCutout(
+            event = currentEvent.value,
+            satellite = satelliteEvent.value,
+            expanded = expanded,
+        ) && !isStickToCamera
+    }
 
     /**
      * The extra height the currently-drawn state claims below its base dimensions: the expanded island's

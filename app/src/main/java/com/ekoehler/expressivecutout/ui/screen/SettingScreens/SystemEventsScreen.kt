@@ -107,6 +107,7 @@ internal fun SystemEventsScreen(
     val dynamicColorRole by viewModel.eventDynamicColorRole.collectAsStateWithLifecycle()
     val dynamicColorOpacity by viewModel.eventDynamicColorOpacity.collectAsStateWithLifecycle()
     val animatedIcons by viewModel.eventAnimatedIcons.collectAsStateWithLifecycle()
+    val animatedIconLoops by viewModel.eventAnimatedIconLoops.collectAsStateWithLifecycle()
     val volumeSettings by viewModel.volumeIntegration.collectAsStateWithLifecycle()
     val nonRingerFamilies = remember { SystemEventFamily.entries.filter { it != SystemEventFamily.RINGER } }
     val behaviour by viewModel.behaviour.collectAsStateWithLifecycle()

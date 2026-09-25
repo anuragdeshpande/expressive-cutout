@@ -223,7 +223,7 @@ internal fun VolumeIntegrationScreen(
                     onSelect = viewModel::setVolumeIconContainerColor,
                     defaultLabel = stringResource(R.string.label_default),
                     defaultColor = VOLUME_DEFAULT_ACCENT,
-                    roundedCorners = 32.dp,
+                    shape = RoundedCornerShape(32.dp),
                 )
             }
         }

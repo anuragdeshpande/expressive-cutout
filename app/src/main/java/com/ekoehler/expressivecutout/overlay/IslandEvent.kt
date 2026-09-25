@@ -2,6 +2,7 @@ package com.ekoehler.expressivecutout.overlay
 
 import android.app.PendingIntent
 import android.app.RemoteInput
+import android.provider.Settings
 import androidx.annotation.RawRes
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
@@ -317,3 +318,24 @@ data class IslandReply(
  */
 fun IslandEvent.usesTinyCutout(callOngoing: Boolean): Boolean =
     media?.miniPlayer == true || (call?.miniCall == true && callOngoing)
+
+/**
+ * True when this event represents the interactive volume HUD or adaptive brightness HUD.
+ * Both HUDs present a leading icon and a live numeric percentage on the trailing edge of the
+ * collapsed pill.
+ */
+val IslandEvent.isHudEvent: Boolean
+    get() = volume != null || actionIntentAction == Settings.ACTION_DISPLAY_SETTINGS
+
+/**
+ * Whether the volume or brightness HUD is drawn split — shrinking the pill to make room for a
+ * satellite bubble while keeping the icon and counter on the visible span outside the camera hole.
+ */
+fun usesSplitHudCutout(
+    event: IslandEvent?,
+    satellite: IslandEvent?,
+    expanded: Boolean,
+): Boolean {
+    if (event == null || !event.isHudEvent) return false
+    return satellite != null && !expanded
+}
