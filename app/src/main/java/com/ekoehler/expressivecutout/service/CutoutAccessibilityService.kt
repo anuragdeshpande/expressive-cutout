@@ -17,6 +17,7 @@ import com.ekoehler.expressivecutout.events.MediaPlaybackMonitor
 import com.ekoehler.expressivecutout.events.SystemEventMonitor
 import com.ekoehler.expressivecutout.events.VolumeMonitor
 import com.ekoehler.expressivecutout.overlay.IslandOverlayController
+import com.ekoehler.expressivecutout.system.AppLocale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -38,6 +39,9 @@ import kotlinx.coroutines.launch
  * and intercepts volume keys when the volume integration is active.
  */
 class CutoutAccessibilityService : AccessibilityService() {
+
+    /** Localises the strings the island itself draws. See [AppLocale]. */
+    override fun attachBaseContext(base: Context) = super.attachBaseContext(AppLocale.wrap(base))
 
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var overlay: IslandOverlayController? = null

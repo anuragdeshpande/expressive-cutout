@@ -40,8 +40,10 @@ import com.ekoehler.expressivecutout.data.JsonSerializable
 import com.ekoehler.expressivecutout.data.JsonSettings
 import com.ekoehler.expressivecutout.data.IslandDimensions
 import com.ekoehler.expressivecutout.data.IslandLayout
+import com.ekoehler.expressivecutout.data.LanguagePreferences
 import com.ekoehler.expressivecutout.data.LayoutPreferences
 import com.ekoehler.expressivecutout.data.MusicButtonStyle
+import com.ekoehler.expressivecutout.data.MusicRightButtonAction
 import com.ekoehler.expressivecutout.data.MusicTilePreferences
 import com.ekoehler.expressivecutout.data.MusicTileSettings
 import com.ekoehler.expressivecutout.data.PhoneTilePreferences
@@ -79,6 +81,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val preferences = IconPreferences(application)
     private val layoutPreferences = LayoutPreferences(application)
     private val themePreferences = ThemePreferences(application)
+    private val languagePreferences = LanguagePreferences(application)
     private val behaviourPreferences = BehaviourPreferences(application)
     private val appearancePreferences = AppearancePreferences(application)
     private val eventPreferences = EventPreferences(application)
@@ -232,6 +235,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             initialValue = AppTheme.SYSTEM,
         )
 
+    val language: StateFlow<String> = languagePreferences.language
+
     val behaviour: StateFlow<BehaviourSettings> =
         behaviourPreferences.settings.stateIn(
             scope = viewModelScope,
@@ -260,6 +265,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
      */
     private val jsonSections: Map<String, JsonSerializable> = mapOf(
         JsonSettings.THEME to themePreferences,
+        JsonSettings.LANGUAGE to languagePreferences,
         JsonSettings.LAYOUT to layoutPreferences,
         JsonSettings.ICONS to preferences,
         JsonSettings.BEHAVIOUR to behaviourPreferences,
@@ -419,8 +425,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         musicTilePreferences.setShowAlbumArt(enabled)
     }
 
+    fun setMusicShowAlbumBackground(enabled: Boolean) = viewModelScope.launch {
+        musicTilePreferences.setShowAlbumBackground(enabled)
+    }
+
     fun setMusicRotateAlbumArt(enabled: Boolean) = viewModelScope.launch {
         musicTilePreferences.setRotateAlbumArt(enabled)
+    }
+
+    fun setMusicCircleCover(enabled: Boolean) = viewModelScope.launch {
+        musicTilePreferences.setCircleCover(enabled)
     }
 
     fun setMusicAlbumArtStroke(enabled: Boolean) = viewModelScope.launch {
@@ -429,6 +443,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setMusicAlbumArtStrokeColor(color: CutoutColor?) = viewModelScope.launch {
         musicTilePreferences.setAlbumArtStrokeColor(color)
+    }
+
+    fun setMusicCoverFallbackColor(color: CutoutColor?) = viewModelScope.launch {
+        musicTilePreferences.setCoverFallbackColor(color)
     }
 
     fun setMusicExpandOnPlay(enabled: Boolean) = viewModelScope.launch {
@@ -455,8 +473,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         phoneTilePreferences.setShowActions(enabled)
     }
 
+    fun setPhoneShowButtonLabels(enabled: Boolean) = viewModelScope.launch {
+        phoneTilePreferences.setShowButtonLabels(enabled)
+    }
+
     fun setPhoneExpandedIncomingLayout(enabled: Boolean) = viewModelScope.launch {
         phoneTilePreferences.setExpandedIncomingLayout(enabled)
+    }
+
+    fun setPhoneMiniCall(enabled: Boolean) = viewModelScope.launch {
+        phoneTilePreferences.setMiniCall(enabled)
     }
 
     fun setPhoneIconContainerColor(color: CutoutColor?) = viewModelScope.launch {
@@ -469,6 +495,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setPhoneOtherButtonColor(color: CutoutColor) = viewModelScope.launch {
         phoneTilePreferences.setOtherButtonColor(color)
+    }
+
+    fun setPhoneIncomingAnswerColor(color: CutoutColor) = viewModelScope.launch {
+        phoneTilePreferences.setIncomingAnswerColor(color)
+    }
+
+    fun setPhoneIncomingHangUpColor(color: CutoutColor) = viewModelScope.launch {
+        phoneTilePreferences.setIncomingHangUpColor(color)
+    }
+
+    fun setPhoneExpandedHangUpColor(color: CutoutColor) = viewModelScope.launch {
+        phoneTilePreferences.setExpandedHangUpColor(color)
     }
 
     fun setTimerShowActions(enabled: Boolean) = viewModelScope.launch {
@@ -527,6 +565,42 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         musicTilePreferences.setPlayPauseCornerPercent(percent)
     }
 
+    fun setMusicPreviousExpand(enabled: Boolean) = viewModelScope.launch {
+        musicTilePreferences.setPreviousExpand(enabled)
+    }
+
+    fun setMusicPreviousText(enabled: Boolean) = viewModelScope.launch {
+        musicTilePreferences.setPreviousText(enabled)
+    }
+
+    fun setMusicPreviousTextWidth(width: Float) = viewModelScope.launch {
+        musicTilePreferences.setPreviousTextWidth(width)
+    }
+
+    fun setMusicNextExpand(enabled: Boolean) = viewModelScope.launch {
+        musicTilePreferences.setNextExpand(enabled)
+    }
+
+    fun setMusicNextText(enabled: Boolean) = viewModelScope.launch {
+        musicTilePreferences.setNextText(enabled)
+    }
+
+    fun setMusicNextTextWidth(width: Float) = viewModelScope.launch {
+        musicTilePreferences.setNextTextWidth(width)
+    }
+
+    fun setMusicPlayPauseExpand(enabled: Boolean) = viewModelScope.launch {
+        musicTilePreferences.setPlayPauseExpand(enabled)
+    }
+
+    fun setMusicPlayPauseText(enabled: Boolean) = viewModelScope.launch {
+        musicTilePreferences.setPlayPauseText(enabled)
+    }
+
+    fun setMusicPlayPauseTextWidth(width: Float) = viewModelScope.launch {
+        musicTilePreferences.setPlayPauseTextWidth(width)
+    }
+
     fun applyMusicSkipPreset(preset: MusicButtonStyle) = viewModelScope.launch {
         musicTilePreferences.applySkipPreset(preset)
     }
@@ -546,6 +620,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun resetLayout() = viewModelScope.launch { layoutPreferences.reset() }
 
     fun setTheme(theme: AppTheme) = viewModelScope.launch { themePreferences.setTheme(theme) }
+
+    /**
+     * Switches the app to the language tagged [tag]. The store applies it to the process straight
+     * away; on Android 12 and below the caller still has to restart the activity for the UI it is
+     * showing to be re-read in the new language.
+     */
+    fun setLanguage(tag: String) = languagePreferences.setLanguage(tag)
 
     fun setCutoutEnabled(enabled: Boolean) = viewModelScope.launch {
         behaviourPreferences.setCutoutEnabled(enabled)
@@ -637,6 +718,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setShowsWhenEmptyShowIcon(enabled: Boolean) = viewModelScope.launch {
         behaviourPreferences.setShowsWhenEmptyShowIcon(enabled)
+    }
+
+    /** Toggles the radiating status dot drawn on the trailing edge of system-event pills. */
+    fun setShowStatusDot(enabled: Boolean) = viewModelScope.launch {
+        behaviourPreferences.setShowStatusDot(enabled)
     }
 
     fun setShowsWhenEmptyImageIcon(uri: String) = viewModelScope.launch {
@@ -932,6 +1018,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setMusicShowProgress(enabled: Boolean) = viewModelScope.launch {
         musicTilePreferences.setShowProgress(enabled)
+    }
+
+    fun setMusicMiniPlayer(enabled: Boolean) = viewModelScope.launch {
+        musicTilePreferences.setMiniPlayer(enabled)
+    }
+
+    fun setMusicRightButton(enabled: Boolean) = viewModelScope.launch {
+        musicTilePreferences.setRightButton(enabled)
+    }
+
+    fun setMusicRightButtonAction(action: MusicRightButtonAction) = viewModelScope.launch {
+        musicTilePreferences.setRightButtonAction(action)
     }
 
     fun setDismissNotifications(enabled: Boolean) = viewModelScope.launch {

@@ -3,18 +3,18 @@ package com.ekoehler.expressivecutout.ui.screen
 import android.app.PendingIntent
 import android.content.Intent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,12 +22,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.DarkMode
-import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -56,12 +53,13 @@ import com.ekoehler.expressivecutout.data.SentAlignment
 import com.ekoehler.expressivecutout.overlay.IslandAction
 import com.ekoehler.expressivecutout.overlay.IslandEvent
 import com.ekoehler.expressivecutout.overlay.IslandIcon
-import com.ekoehler.expressivecutout.overlay.calculateExpandedNotificationHeightDp
-import com.ekoehler.expressivecutout.overlay.expandedActionsExtraDp
+import com.ekoehler.expressivecutout.overlay.IslandPreview
 import com.ekoehler.expressivecutout.ui.AppViewModel
 import com.ekoehler.expressivecutout.ui.components.ColorPickerCard
 import com.ekoehler.expressivecutout.ui.components.OptionSelectionCard
+import com.ekoehler.expressivecutout.ui.components.PageTitle
 import com.ekoehler.expressivecutout.ui.components.SelectableOption
+import com.ekoehler.expressivecutout.ui.components.groupedShape
 import kotlin.math.roundToInt
 
 /** Label and supporting line shown for each chip style in its options card. */
@@ -133,6 +131,9 @@ private val SentAlignment.descriptionRes: Int
 /** Accent used by the preview event, matching the accent shown on the sibling settings screens. */
 private val PREVIEW_ACCENT = Color(0xFF60A5FA)
 
+/** Top inset used by this screen's preview: the island's own horizontal padding, not a camera band. */
+private const val PREVIEW_TOP_MARGIN_DP = 18
+
 /**
  * "Action buttons" screen (reached from the Appearance screen). Configures the chips and inline
  * reply field shown in the expanded cutout: whether they appear at all, the chip style/colour/height,
@@ -147,8 +148,6 @@ internal fun ButtonScreen(
     val appearance by viewModel.appearance.collectAsStateWithLifecycle()
     val behaviour by viewModel.behaviour.collectAsStateWithLifecycle()
     val layout by viewModel.layout.collectAsStateWithLifecycle()
-    val systemInDark = isSystemInDarkTheme()
-    var previewDark by remember { mutableStateOf(systemInDark) }
     // Local height so the sliders/preview react immediately; committed to prefs on release.
     var buttonHeight by remember(appearance.actionButtonHeightDp) {
         mutableStateOf(appearance.actionButtonHeightDp.toFloat())
@@ -183,64 +182,49 @@ internal fun ButtonScreen(
             ),
         )
     }
-    val cutout = rememberTopCutout()
     val expanded = layout.expanded
-    // Mirror the real island: it grows by the chip row's height and top margin so the chips clear the camera hole —
-    // but only when the chips are actually shown, matching the toggle below.
-    val previewHeightDp = calculateExpandedNotificationHeightDp(
-        baseExpandedHeightDp = expanded.heightDp,
-        topMarginDp = expanded.topMarginDp,
-        buttonHeightDp = buttonHeight.roundToInt(),
-        hasActions = behaviour.showActionButtons,
-    )
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(contentPadding),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = stringResource(R.string.appearance_preview),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            FilledTonalIconButton(onClick = { previewDark = !previewDark }) {
-                Icon(
-                    imageVector = if (previewDark) Icons.Rounded.LightMode else Icons.Rounded.DarkMode,
-                    contentDescription = stringResource(R.string.cd_toggle_preview_theme),
+        PageTitle(text = stringResource(R.string.action_buttons_title))
+
+        // Expanded cutout preview. The pill keeps the configured width share, but of the card's own
+        // width rather than the screen's, and is centred so it never runs past the content padding.
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val previewWidth = maxWidth * (expanded.widthPercent / 100f)
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.TopCenter,
+            ) {
+                IslandPreview(
+                    event = previewEvent,
+                    width = previewWidth,
+                    heightDp = expanded.heightDp,
+                    cornerTopLeftDp = expanded.cornerTopLeftDp,
+                    cornerTopRightDp = expanded.cornerTopRightDp,
+                    cornerBottomLeftDp = expanded.cornerBottomLeftDp,
+                    cornerBottomRightDp = expanded.cornerBottomRightDp,
+                    topMarginDp = PREVIEW_TOP_MARGIN_DP,
+                    expanded = true,
+                    appearance = previewAppearance,
+                    showActions = behaviour.showActionButtons,
+                    collapsedHeightDp = 12,
+                    onHeightMeasured = {},
                 )
             }
         }
 
-        IslandPreviewPanel(
-            background = if (previewDark) Color(0xFF0B0B0C) else Color(0xFFEDEFF3),
-            cutout = cutout,
-            widthPercent = expanded.widthPercent,
-            heightDp = previewHeightDp,
-            cornerTopLeftDp = expanded.cornerTopLeftDp,
-            cornerTopRightDp = expanded.cornerTopRightDp,
-            cornerBottomLeftDp = expanded.cornerBottomLeftDp,
-            cornerBottomRightDp = expanded.cornerBottomRightDp,
-            offsetXDp = expanded.offsetXDp,
-            offsetYDp = expanded.offsetYDp,
-            topMarginDp = expanded.topMarginDp,
-            expanded = true,
-            event = previewEvent,
-            appearance = previewAppearance,
-            showActions = behaviour.showActionButtons,
-        )
+        Spacer(modifier = Modifier.height(8.dp))
 
         // Whether the chips appear at all lives with the other behaviour toggles, but it is the
         // natural on/off switch for this screen, so it leads here too.
         SettingsToggleCard(
-            shape = RoundedCornerShape(24.dp),
+            shape = groupedShape(isFirst = true),
             title = stringResource(R.string.action_buttons_enable_title),
             description = stringResource(R.string.action_buttons_enable_desc),
             checked = behaviour.showActionButtons,
@@ -249,14 +233,13 @@ internal fun ButtonScreen(
 
         // Whether tapping an action button confirms with a toast.
         SettingsToggleCard(
-            shape = RoundedCornerShape(24.dp),
             title = stringResource(R.string.action_buttons_toast_title),
             description = stringResource(R.string.action_buttons_toast_desc),
             checked = behaviour.toastOnAction,
             onCheckedChange = viewModel::setToastOnAction,
         )
 
-        // --- Chip style ---
+        // Chip style
         OptionSelectionCard(
             title = stringResource(R.string.action_buttons_style_title),
             options = ActionButtonStyle.entries.map { style ->
@@ -268,9 +251,11 @@ internal fun ButtonScreen(
             },
             selectedValue = appearance.actionButtonStyle,
             onSelectionChange = viewModel::setActionButtonStyle,
+            isLast = false,
+            isFirst = false
         )
 
-        // --- Chip colour (dynamic roles, custom, presets) ---
+        // Chip colour (dynamic roles, custom, presets)
         // A null selection follows the notification's own accent (the historical default).
         ColorPickerCard(
             label = stringResource(R.string.action_buttons_color_title),
@@ -280,10 +265,10 @@ internal fun ButtonScreen(
             defaultColor = PREVIEW_ACCENT,
         )
 
-        // --- Chip height ---
+        // Chip height
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
+            shape = groupedShape(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         ) {
             Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
@@ -300,7 +285,7 @@ internal fun ButtonScreen(
             }
         }
 
-        // --- Chip alignment ---
+        // Chip alignment
         OptionSelectionCard(
             title = stringResource(R.string.action_buttons_alignment_title),
             options = ActionButtonAlignment.entries.map { alignment ->
@@ -312,9 +297,11 @@ internal fun ButtonScreen(
             },
             selectedValue = appearance.actionButtonAlignment,
             onSelectionChange = viewModel::setActionButtonAlignment,
+            isLast = false,
+            isFirst = false
         )
 
-        // --- Reply field style ---
+        // Reply field style
         OptionSelectionCard(
             title = stringResource(R.string.action_buttons_input_style_title),
             options = ReplyInputStyle.entries.map { style ->
@@ -333,18 +320,19 @@ internal fun ButtonScreen(
                     heightDp = buttonHeight.roundToInt(),
                 )
             },
+            isLast = false,
+            isFirst = false
         )
 
-        // --- Cancel button placement ---
+        // Cancel button placement
         SettingsToggleCard(
-            shape = RoundedCornerShape(24.dp),
             title = stringResource(R.string.action_buttons_cancel_left_title),
             description = stringResource(R.string.action_buttons_cancel_left_desc),
             checked = appearance.cancelButtonOnLeft,
             onCheckedChange = viewModel::setCancelButtonOnLeft,
         )
 
-        // --- "Sent" confirmation placement ---
+        // "Sent" confirmation placement
         OptionSelectionCard(
             title = stringResource(R.string.action_buttons_sent_alignment_title),
             options = SentAlignment.entries.map { alignment ->
@@ -356,11 +344,11 @@ internal fun ButtonScreen(
             },
             selectedValue = appearance.sentAlignment,
             onSelectionChange = viewModel::setSentAlignment,
+            isLast = false,
+            isFirst = false
         )
 
-        // --- Send / cancel reply-button colours ---
-        // Their colours default to the notification's accent (send) and a neutral tint (cancel);
-        // the leading "default" swatch restores that behaviour.
+        // Send button color
         ColorPickerCard(
             label = stringResource(R.string.appearance_send_color),
             selected = appearance.sendButtonColor,
@@ -368,12 +356,15 @@ internal fun ButtonScreen(
             defaultLabel = stringResource(R.string.cd_color_default_accent),
             defaultColor = PREVIEW_ACCENT,
         )
+
+        // Cancel button color
         ColorPickerCard(
             label = stringResource(R.string.appearance_cancel_color),
             selected = appearance.cancelButtonColor,
             onSelect = viewModel::setCancelButtonColor,
             defaultLabel = stringResource(R.string.cd_color_default_neutral),
             defaultColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            shape = groupedShape(isLast = true)
         )
     }
 }

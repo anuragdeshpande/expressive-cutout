@@ -1,5 +1,6 @@
 package com.ekoehler.expressivecutout.ui.screen
 
+import android.app.Application
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.rememberScrollState
@@ -45,12 +46,14 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ekoehler.expressivecutout.ExpressiveCutoutApp
 import com.ekoehler.expressivecutout.R
 import com.ekoehler.expressivecutout.core.DynamicTile
 import com.ekoehler.expressivecutout.core.SystemEventType
 import com.ekoehler.expressivecutout.core.IslandPreviewBus
 import com.ekoehler.expressivecutout.permissions.Permissions
 import com.ekoehler.expressivecutout.ui.AppViewModel
+import com.ekoehler.expressivecutout.ui.components.PageTitle
 import com.ekoehler.expressivecutout.ui.pageTransition
 import com.ekoehler.expressivecutout.ui.screen.tiles.TileSettingsScreen
 
@@ -87,7 +90,7 @@ fun SettingsTab(
     onOpenActionButtons: () -> Unit,
     onOpenShizuku: () -> Unit,
     onOpenPermissionDot: () -> Unit,
-    onOpenEventIcons: () -> Unit,
+    onOpenSystemEvents: () -> Unit,
     onOpenEvent: (SystemEventType) -> Unit,
     onOpenVolume: () -> Unit = {},
 ) {
@@ -124,6 +127,7 @@ fun SettingsTab(
             }
         }
     }
+
     // Routing (and back navigation, via the bottom bar) is owned by MainScreen.
     AnimatedContent(
         targetState = route,
@@ -148,7 +152,7 @@ fun SettingsTab(
                     onOpenAnimation = onOpenAnimation,
                     onOpenAppearance = onOpenAppearance,
                     onOpenShizuku = onOpenShizuku,
-                    onOpenEventIcons = onOpenEventIcons,
+                    onOpenSystemEvents = onOpenSystemEvents,
                 )
             }
 
@@ -166,7 +170,7 @@ fun SettingsTab(
             SettingsRoute.ActionButtons -> ButtonScreen(viewModel, contentPadding)
             SettingsRoute.Shizuku -> ShizukuScreen(viewModel, contentPadding, onOpenPermissionDot)
             SettingsRoute.PermissionDot -> PermissionDotScreen(viewModel, contentPadding)
-            SettingsRoute.EventIcons -> EventIconsScreen(viewModel, contentPadding, onOpenEvent, onOpenVolume = onOpenVolume)
+            SettingsRoute.SystemEvents -> SystemEventsScreen(viewModel, contentPadding, onOpenEvent, onOpenVolume = onOpenVolume)
             SettingsRoute.EventDetail ->
                 selectedEvent?.let { EventDetailScreen(it, viewModel, contentPadding) }
             SettingsRoute.VolumeIntegration -> VolumeIntegrationScreen(viewModel, contentPadding)
@@ -176,7 +180,7 @@ fun SettingsTab(
 
 /** The screens reachable from the Settings tab. Hoisted to MainScreen so the bottom bar can
  *  switch to a back pill on the detail screens. */
-enum class SettingsRoute { List, SizePosition, DynamicTiles, DynamicTileDetail, Apps, Behaviour, ShowsWhenEmpty, Animation, Appearance, Background, ActionButtons, Shizuku, PermissionDot, EventIcons, EventDetail, VolumeIntegration }
+enum class SettingsRoute { List, SizePosition, DynamicTiles, DynamicTileDetail, Apps, Behaviour, ShowsWhenEmpty, Animation, Appearance, Background, ActionButtons, Shizuku, PermissionDot, SystemEvents, EventDetail, VolumeIntegration }
 
 /**
  * The screen that back navigation returns to. Most detail screens go straight back to the list,
@@ -189,7 +193,7 @@ val SettingsRoute.parent: SettingsRoute
         SettingsRoute.DynamicTileDetail -> SettingsRoute.DynamicTiles
         SettingsRoute.ShowsWhenEmpty -> SettingsRoute.Behaviour
         SettingsRoute.PermissionDot -> SettingsRoute.Shizuku
-        SettingsRoute.EventDetail, SettingsRoute.VolumeIntegration -> SettingsRoute.EventIcons
+        SettingsRoute.EventDetail, SettingsRoute.VolumeIntegration -> SettingsRoute.SystemEvents
         else -> SettingsRoute.List
     }
 
@@ -215,7 +219,7 @@ private fun SettingsList(
     onOpenAnimation: () -> Unit,
     onOpenAppearance: () -> Unit,
     onOpenShizuku: () -> Unit,
-    onOpenEventIcons: () -> Unit,
+    onOpenSystemEvents: () -> Unit,
 ) {
     val context = LocalContext.current
     // Re-reads on resume so returning from the system Accessibility settings updates immediately.
@@ -228,6 +232,7 @@ private fun SettingsList(
     // case that best-effort request doesn't take on this OEM.
     val notificationsGranted = rememberNotificationAccessGranted()
     val notificationsRunning = rememberNotificationListenerRunning()
+    val appName = context.applicationInfo.loadLabel(context.packageManager).toString()
 
     Column(
         modifier = Modifier
@@ -236,6 +241,8 @@ private fun SettingsList(
             .padding(contentPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        PageTitle(text = appName)
+
         // Accessibility access permission request if needed
         AnimatedVisibility(
             visible = !accessibilityAvailable,
@@ -342,7 +349,7 @@ private fun SettingsList(
                 icon = Icons.Rounded.Notifications,
                 title = stringResource(R.string.integrations_system_events_title),
                 subtitle = stringResource(R.string.settings_icons_subtitle),
-                onClick = onOpenEventIcons,
+                onClick = onOpenSystemEvents,
             )
             SettingsListItem(
                 icon = Icons.Rounded.Apps,

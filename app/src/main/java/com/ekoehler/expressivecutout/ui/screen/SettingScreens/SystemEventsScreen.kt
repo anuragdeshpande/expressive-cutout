@@ -88,13 +88,14 @@ import com.ekoehler.expressivecutout.overlay.onForRole
 import com.ekoehler.expressivecutout.overlay.resolve
 import com.ekoehler.expressivecutout.ui.AppViewModel
 import com.ekoehler.expressivecutout.ui.components.ExpressivePillRow
+import com.ekoehler.expressivecutout.ui.components.PageTitle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 @Composable
-internal fun EventIconsScreen(
+internal fun SystemEventsScreen(
     viewModel: AppViewModel,
     contentPadding: PaddingValues,
     onOpenEvent: (SystemEventType) -> Unit,
@@ -106,9 +107,9 @@ internal fun EventIconsScreen(
     val dynamicColorRole by viewModel.eventDynamicColorRole.collectAsStateWithLifecycle()
     val dynamicColorOpacity by viewModel.eventDynamicColorOpacity.collectAsStateWithLifecycle()
     val animatedIcons by viewModel.eventAnimatedIcons.collectAsStateWithLifecycle()
-    val animatedIconLoops by viewModel.eventAnimatedIconLoops.collectAsStateWithLifecycle()
     val volumeSettings by viewModel.volumeIntegration.collectAsStateWithLifecycle()
     val nonRingerFamilies = remember { SystemEventFamily.entries.filter { it != SystemEventFamily.RINGER } }
+    val behaviour by viewModel.behaviour.collectAsStateWithLifecycle()
     var selectedFamily by remember { mutableStateOf<SystemEventFamily?>(null) }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -117,6 +118,7 @@ internal fun EventIconsScreen(
             modifier = Modifier.clip(shape = RoundedCornerShape(24.dp)),
             contentPadding = contentPadding
         ) {
+
             // The dynamic-colour toggle is the top row of the same grouped list, so it carries the
             // group's rounded top corners; the events below flow on beneath it.
             item(key = "dynamic_container") {
@@ -143,6 +145,14 @@ internal fun EventIconsScreen(
                             onOpacityChange = { viewModel.setEventDynamicColorOpacity(it) },
                         )
                     }
+
+                    SettingsToggleCard(
+                        shape = RoundedCornerShape(4.dp),
+                        title = stringResource(R.string.system_events_status_dot),
+                        description = stringResource(R.string.system_events_status_dot_desc),
+                        checked = behaviour.showStatusDot,
+                        onCheckedChange = { viewModel.setShowStatusDot(it) },
+                    )
                 }
             }
 

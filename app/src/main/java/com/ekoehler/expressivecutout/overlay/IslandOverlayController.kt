@@ -15,6 +15,7 @@ import android.graphics.Region
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.telecom.TelecomManager
 import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
@@ -68,6 +69,8 @@ import com.ekoehler.expressivecutout.data.IslandDimensions
 import com.ekoehler.expressivecutout.data.IslandLayout
 import com.ekoehler.expressivecutout.data.LayoutPreferences
 import com.ekoehler.expressivecutout.data.asCallCutout
+import com.ekoehler.expressivecutout.data.asSplitCallCutout
+import com.ekoehler.expressivecutout.data.asTinyCutout
 import com.ekoehler.expressivecutout.data.AssistantTilePreferences
 import com.ekoehler.expressivecutout.data.AssistantTileSettings
 import com.ekoehler.expressivecutout.data.MusicTilePreferences
@@ -96,6 +99,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.lang.reflect.Proxy
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -148,6 +152,14 @@ class IslandOverlayController(private val context: Context) {
      */
     private var displayWidthPx: Int = computeDisplayWidthPx()
     private val displayWidthDp = MutableStateFlow((displayWidthPx / density).toInt())
+
+    /**
+     * The camera cutout's right edge in dp, measured from the screen's horizontal centre, or null
+     * on a device that reports no cutout. The music tile's tiny "Mini player" pill hangs off it;
+     * everything else is centred and ignores this. Re-measured on rotation, since the hole moves to
+     * a side edge in landscape.
+     */
+    private val cameraRightEdgeDp = MutableStateFlow(measureCameraRightEdgeDp())
 
     /**
      * The orientation the live window geometry was built for, so [onOrientationChanged] only reacts
@@ -629,6 +641,7 @@ class IslandOverlayController(private val context: Context) {
         rotationState.value = rotation
         displayWidthPx = computeDisplayWidthPx()
         displayWidthDp.value = (displayWidthPx / density).toInt()
+        cameraRightEdgeDp.value = measureCameraRightEdgeDp()
         applyLockVisibility()
         if (overlayHidden) return
         // Resize straight to the final geometry in one step (not the usual grow-then-shrink), while the
@@ -686,6 +699,7 @@ class IslandOverlayController(private val context: Context) {
                 val behaviour by behaviourState.collectAsStateWithLifecycle()
                 val appearance by appearanceState.collectAsStateWithLifecycle()
                 val widthDp by displayWidthDp.collectAsStateWithLifecycle()
+                val cameraRightDp by cameraRightEdgeDp.collectAsStateWithLifecycle()
                 val orientation by orientationState.collectAsStateWithLifecycle()
                 val rotation by rotationState.collectAsStateWithLifecycle()
                 val snapGeometry by rotationSnapState.collectAsStateWithLifecycle()
@@ -710,6 +724,7 @@ class IslandOverlayController(private val context: Context) {
                         collapsed = layout.collapsed,
                         expanded = layout.expanded,
                         displayWidthDp = widthDp,
+                        cameraRightEdgeDp = cameraRightDp,
                         forcedExpanded = effectiveForced,
                         collapseTrigger = collapse,
                         isStickToCamera = isStickToCamera,
@@ -739,6 +754,7 @@ class IslandOverlayController(private val context: Context) {
                         actionButtonAnimation = behaviour.actionButtonAnimation,
                         vibrateOnTap = behaviour.vibrateOnTap,
                         hapticsOnPop = behaviour.hapticsOnPop,
+                        statusDotEnabled = behaviour.showStatusDot,
                         permissionDotsEnabled = permissionDotsEnabled || permissionDotPreview,
                         permissionUsage = permissionUsage,
                         permissionDotPosition = permissionDotPosition,
@@ -753,6 +769,7 @@ class IslandOverlayController(private val context: Context) {
                         onFlickNext = ::onFlickNextPreview,
                         onExpandedChange = ::onExpandedChanged,
                         onActivate = ::onActivate,
+                        onOpenCall = ::onOpenCall,
                         onAction = ::onAction,
                         onReply = ::onReply,
                         onReplyActiveChange = ::onReplyActive,
@@ -892,8 +909,47 @@ class IslandOverlayController(private val context: Context) {
     private fun observeMusicSettings() = scope.launch {
         musicTilePreferences.settings.collect {
             musicSettings = it
+            refreshMusicEvent()
             // Toggling "Visible in player app" should take effect immediately, even mid-playback.
             applyPlayerAppVisibility()
+        }
+    }
+
+    /**
+     * Re-resolves the live music event so display settings changed in the settings screen are
+     * visible without waiting for the next track or restarting the overlay service.
+     */
+    private fun refreshMusicEvent() {
+        val nowPlaying = NowPlayingBus.state.value ?: return
+        val previous = lastMusicEvent ?: return
+        val signal = CutoutSignal.Music(
+            packageName = nowPlaying.packageName,
+            title = nowPlaying.title,
+            artist = nowPlaying.artist,
+            contentIntent = previous.contentIntent,
+        )
+        val refreshed = resolver.resolve(
+            signal = signal,
+            customIcons = customIcons,
+            musicSettings = musicSettings,
+            phoneSettings = phoneSettings,
+            timerSettings = timerSettings,
+            assistantSettings = assistantSettings,
+            dynamicEventColor = eventDynamicColor,
+            dynamicEventColorRole = eventDynamicColorRole,
+            dynamicEventColorOpacity = eventDynamicColorOpacity,
+            animatedIconEnabled = eventAnimatedIcons,
+            animatedIconLoop = eventAnimatedIconLoops,
+            eventColorOverrides = eventColors,
+            preferDynamicIconColor = appearanceState.value.preferDynamicIconColor,
+        ).copy(
+            initiallyExpanded = previous.initiallyExpanded,
+            normalOnly = previous.normalOnly,
+        )
+        lastMusicEvent = refreshed
+        if (currentEvent.value?.media != null) {
+            currentEvent.value = refreshed
+            syncWindowSize()
         }
     }
 
@@ -1344,7 +1400,32 @@ class IslandOverlayController(private val context: Context) {
     private fun touchRects(viewWidth: Int, viewHeight: Int): List<Rect> {
         val pill = pillTouchRect(viewWidth, viewHeight)
         val satellite = satelliteTouchRect(viewWidth, viewHeight)
-        return if (satellite == null) listOf(pill) else listOf(pill, satellite)
+        val callCapsule = callCapsuleTouchRect(viewWidth, viewHeight)
+        return listOfNotNull(pill, satellite, callCapsule)
+    }
+
+    /**
+     * The detached hang-up capsule's rectangle, or null unless a connected call is drawn split.
+     * Mirrors the offsets [DynamicIsland] places it at — the pill's centre, out past half the pill's
+     * width plus the gap — so what is tappable is exactly what is drawn.
+     */
+    private fun callCapsuleTouchRect(viewWidth: Int, viewHeight: Int): Rect? {
+        if (!isSplitCall()) return null
+        val dims = effectiveDims(layoutState.value, expanded = false)
+        val gapPx = (CALL_SPLIT_GAP_DP * density).toInt()
+        val capsuleWidthPx = (callSplitHangUpWidthDp(dims.heightDp) * density).toInt()
+        val pillWidthPx = displayWidthPx * dims.widthPercent / 100
+        val margin = (TOUCH_MARGIN_DP * density).toInt()
+        val pillCenterX = viewWidth / 2 + (dims.offsetXDp * density).toInt()
+        val capsuleCenterX = pillCenterX + pillWidthPx / 2 + gapPx + capsuleWidthPx / 2
+        val topPx = (dims.offsetYDp * density).toInt()
+        val bottomPx = topPx + (dims.heightDp * density).toInt()
+        return Rect(
+            (capsuleCenterX - capsuleWidthPx / 2 - margin).coerceAtLeast(0),
+            (topPx - margin).coerceAtLeast(0),
+            (capsuleCenterX + capsuleWidthPx / 2 + margin).coerceAtMost(viewWidth),
+            (bottomPx + margin).coerceAtMost(if (viewHeight > 0) viewHeight else bottomPx + margin),
+        )
     }
 
     /**
@@ -1465,8 +1546,10 @@ class IslandOverlayController(private val context: Context) {
             val totalDp = dims.offsetYDp + dims.heightDp + TOUCH_MARGIN_DP * 2
             return (totalDp * density).toInt()
         }
+        // The window is centred on the screen, so a pill pushed off-centre (the tiny "Mini player"
+        // parked beside the camera) needs twice its offset of extra width or it is clipped.
         val islandWidthDp = displayWidthDp.value * (dims.widthPercent / 100f) +
-            permissionDotWidthBonusDp(expanded)
+            permissionDotWidthBonusDp(expanded) + abs(dims.offsetXDp) * 2
         return ((islandWidthDp + WINDOW_MARGIN_DP * 2) * density).toInt()
     }
 
@@ -1502,6 +1585,8 @@ class IslandOverlayController(private val context: Context) {
         if (satelliteEvent.value == null) return 0
         if (expanded) return 0
         if (currentEvent.value?.call != null) return 0
+        // The tiny cutout has no width to give away.
+        if (isTinyTile()) return 0
         if (isLandscapeSplitSuppressed()) return 0
         return layoutState.value.collapsed.heightDp + SATELLITE_GAP_DP
     }
@@ -1538,6 +1623,7 @@ class IslandOverlayController(private val context: Context) {
         if (!behaviourState.value.splitIslandEnabled) return false
         if (isLandscapeSplitSuppressed()) return false
         if (displaced.call != null || incoming.call != null) return false
+        if (isTinyTile(displaced) || isTinyTile(incoming)) return false
         if (displaced.assistant != null || incoming.assistant != null) return false
         if (isTwoRowCall()) return false
         val key = displaced.notificationKey
@@ -1760,12 +1846,27 @@ class IslandOverlayController(private val context: Context) {
             expanded && event?.media != null ->
                 layout.expanded.copy(heightDp = mediaExpandedBaseHeightDp(layout.expanded.topMarginDp))
             expanded -> layout.expanded
+            // "Mini player" / "Mini call" shrink the normal cutout to the tiny pill, so the window
+            // and the touchable region have to shrink with it.
+            isTinyTile() -> layout.collapsed.asTinyCutout(displayWidthDp.value, cameraRightEdgeDp.value)
             event?.call != null -> {
                 val incoming = OnCallBus.state.value?.ongoing == false
                 if (isTwoRowCall()) {
                     // The two-row incoming layout starts from the expanded cutout (grown by the button
                     // row via currentHeightBonusDp).
                     layout.expanded
+                } else if (isSplitCall()) {
+                    // The split connected call keeps the normal pill's height and corners, sized and
+                    // placed around the camera hole; its hang-up button lives in a capsule beside it.
+                    layout.collapsed.asSplitCallCutout(
+                        displayWidthDp = displayWidthDp.value,
+                        contentWidthDp = callSplitContentWidthDp(
+                            heightDp = layout.collapsed.heightDp,
+                            density = density,
+                            longClock = callClockCarriesHours(OnCallBus.state.value?.startTimeMs),
+                        ),
+                        cameraRightEdgeDp = cameraRightEdgeDp.value,
+                    )
                 } else {
                     // Match the pill's name-driven width so the trailing call button(s) stay tappable:
                     // one for a connected call's hang-up, two for a one-line incoming's decline + answer.
@@ -1812,6 +1913,17 @@ class IslandOverlayController(private val context: Context) {
     }
 
     /**
+     * Whether the shown call is drawn split — a narrow pill plus the detached hang-up capsule.
+     * Mirrors [usesSplitCallCutout] so the touchable region matches what the island renders.
+     */
+    private fun isSplitCall(): Boolean = usesSplitCallCutout(
+        event = currentEvent.value,
+        callOngoing = OnCallBus.state.value?.ongoing == true,
+        expanded = expanded,
+        tiny = isTinyTile(),
+    )
+
+    /**
      * The extra height the currently-drawn state claims below its base dimensions: the expanded island's
      * action row when expanded, or the incoming two-row call layout's button row. Mirrors the height
      * bonus [DynamicIsland] applies, so the window and touchable region stay as tall as what it renders.
@@ -1828,6 +1940,9 @@ class IslandOverlayController(private val context: Context) {
         }
         val topMarginExtra = maxOf(0, layoutState.value.expanded.topMarginDp - IslandDimensions.DEFAULT_TOP_MARGIN_DP)
         return when {
+            // The expanded connected call stacks its own two button rows under the caller row.
+            expanded && event?.call != null ->
+                callExpandedExtraDp(event.call.showActions && event.actions.isNotEmpty())
             // The empty pill's expanded "center" (no event) claims room for its shortcut row.
             expanded && event == null &&
                 behaviourState.value.showsWhenEmptyClickAction == EmptyClickAction.OPEN_CENTER ->
@@ -1851,6 +1966,13 @@ class IslandOverlayController(private val context: Context) {
             else -> 0
         }
     }
+
+    /**
+     * Whether an event draws the tiny cutout right now — the music "Mini player" or a connected
+     * call's "Mini call". Defaults to the shown event; mirrors what [DynamicIsland] renders.
+     */
+    private fun isTinyTile(event: IslandEvent? = currentEvent.value): Boolean =
+        event?.usesTinyCutout(callOngoing = OnCallBus.state.value?.ongoing == true) == true
 
     /** Whether the shown event is an incoming call rendered in the taller two-row layout. */
     private fun isTwoRowCall(): Boolean {
@@ -2255,6 +2377,7 @@ class IslandOverlayController(private val context: Context) {
             // returns via musicPillToReturnTo() once the user leaves that app.
             if (signal is CutoutSignal.Music && shouldHideForPlayerApp()) {
                 playerAppHidden = true
+                dismissJob?.cancel()
                 forcedExpanded.value = null
                 expanded = false
                 currentEvent.value = null
@@ -2394,6 +2517,38 @@ class IslandOverlayController(private val context: Context) {
                 context.startActivity(launchIntent)
             }.onFailure { Log.w(TAG, "Failed to launch settings action", it) }
         }
+    }
+
+    /**
+     * The expanded call card's "Open" button: hand the live call back to the dialer's own in-call
+     * screen, leaving the pill up (the call is still running). Telecom is asked first because it
+     * raises the in-call screen itself — the call notification's content intent would be an activity
+     * start from our overlay, which Android 14+ can silently drop, and the in-app test call carries
+     * no content intent at all. That intent is the fallback, then simply launching the app that owns
+     * the call.
+     */
+    private fun onOpenCall() {
+        dismissJob?.cancel()
+        val packageName = OnCallBus.state.value?.packageName
+        if (packageName != null && packageName != context.packageName) {
+            val telecom = context.getSystemService<TelecomManager>()
+            if (telecom != null) {
+                runCatching { telecom.showInCallScreen(false) }
+                    .onSuccess { return }
+                    .onFailure { Log.w(TAG, "Failed to show the in-call screen", it) }
+            }
+        }
+        val intent = currentEvent.value?.contentIntent
+        if (intent != null) {
+            sendPendingIntent(intent)
+            return
+        }
+        val launch = packageName
+            ?.let { context.packageManager.getLaunchIntentForPackage(it) }
+            ?.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+            ?: return
+        runCatching { context.startActivity(launch) }
+            .onFailure { Log.w(TAG, "Failed to open the calling app", it) }
     }
 
     /**
@@ -2735,6 +2890,16 @@ class IslandOverlayController(private val context: Context) {
      * (left/right half of the landscape screen) so it tracks the actual hole, falling back to the
      * display rotation when the cutout can't be measured.
      */
+    /**
+     * The camera cutout's right edge relative to the screen's horizontal centre, in dp. Null when
+     * the device reports no cutout, which leaves [asTinyCutout] to assume a centred hole.
+     */
+    private fun measureCameraRightEdgeDp(): Float? {
+        val bounds = CutoutMetrics.displayCutoutBoundsPx(context) ?: return null
+        val (widthPx, _) = currentScreenSizePx()
+        return (bounds.right - widthPx / 2f) / density
+    }
+
     private fun getLandscapeCameraGravity(): Int {
         val center = composeView?.let { CutoutMetrics.cutoutCenterPx(it) }
         if (center != null) {
