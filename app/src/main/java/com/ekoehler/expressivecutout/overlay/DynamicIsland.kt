@@ -70,16 +70,20 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import android.media.AudioManager
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
+import androidx.compose.material.icons.rounded.Archive
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.CallEnd
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ClosedCaption
 import androidx.compose.material.icons.rounded.ClosedCaptionOff
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.DoneAll
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MicOff
@@ -720,11 +724,11 @@ fun DynamicIsland(
         )
         isPreview -> collapsed.copy(
             widthPercent = previewWidthPercent,
-            heightDp = 56,
-            cornerTopLeftDp = 28,
-            cornerTopRightDp = 28,
-            cornerBottomLeftDp = 28,
-            cornerBottomRightDp = 28,
+            heightDp = 58,
+            cornerTopLeftDp = 29,
+            cornerTopRightDp = 29,
+            cornerBottomLeftDp = 29,
+            cornerBottomRightDp = 29,
         )
         // The music tile keeps the expanded width, corners and offsets, but sizes itself from its own
         // content — see [mediaExpandedBaseHeightDp].
@@ -4116,9 +4120,7 @@ internal fun previewCutoutWidthPercent(
     val textColumnDp = maxOf(row1Dp, row2Dp)
 
     val actionChipDp = if (!actionLabel.isNullOrBlank()) {
-        val actionTextDp = measureTextWidthDp(actionLabel, 11f, true)
-        val actionIconDp = 17
-        20 + actionIconDp + actionTextDp + 10
+        38f
     } else {
         0f
     }
@@ -4133,9 +4135,9 @@ internal fun previewCutoutWidthPercent(
  * 2-row compact preview state for notifications on the dynamic island.
  * Left: App icon / Avatar badge
  * Center:
- *   Row 1: Context tag (e.g. "r/androiddev • Post", "Work Account • Alex", "Duo Mobile • Login Request")
- *   Row 2: Summary text (with lock icon if content is masked)
- * Right: Material 3 primary action chip (e.g. Approve, Reply, Archive)
+ *   Row 1: Context tag (e.g. app name, sender, channel) and compact relative duration
+ *   Row 2: 6-7 word intelligent summary (or masked privacy notice)
+ * Right: Material 3 icon-only primary action button
  */
 @Composable
 private fun NotificationPreviewContent(
@@ -4149,7 +4151,7 @@ private fun NotificationPreviewContent(
     Row(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .padding(horizontal = 12.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -4158,47 +4160,63 @@ private fun NotificationPreviewContent(
 
         // Center 2-row context and summary
         Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(1.dp, Alignment.CenterVertically),
+            modifier = Modifier
+                .weight(1f)
+                .padding(vertical = 1.dp),
+            verticalArrangement = Arrangement.Center,
         ) {
             val appLabel = event.appName?.takeIf { it.isNotBlank() }
                 ?: preview.contextTag?.takeIf { it.isNotBlank() }
                 ?: "Notification"
             val compactTime = rememberCompactRelativeTime(event.postTimeMs)
-            val headerText = if (!compactTime.isNullOrBlank()) {
-                "$appLabel • $compactTime"
-            } else {
-                appLabel
-            }
 
+            // Header line
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
             ) {
                 Text(
-                    text = headerText,
+                    text = appLabel,
                     color = MaterialTheme.colorScheme.primary,
-                    fontSize = 11.sp,
+                    fontSize = 11.5.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
+                if (!compactTime.isNullOrBlank()) {
+                    Text(
+                        text = "•",
+                        color = Color.White.copy(alpha = 0.35f),
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = compactTime,
+                        color = Color.White.copy(alpha = 0.55f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Normal,
+                    )
+                }
                 if (stackCount > 1) {
                     Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = Color.White.copy(alpha = 0.15f),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
                     ) {
                         Text(
                             text = "$stackIndex/$stackCount",
-                            color = Color.White.copy(alpha = 0.9f),
+                            color = MaterialTheme.colorScheme.primary,
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.5.dp),
                         )
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(2.dp))
+
+            // Summary line
             if (event.isContentMasked || preview.isContentMasked) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -4207,14 +4225,14 @@ private fun NotificationPreviewContent(
                     Icon(
                         imageVector = Icons.Rounded.Lock,
                         contentDescription = null,
-                        tint = Color.White.copy(alpha = 0.65f),
-                        modifier = Modifier.size(11.dp),
+                        tint = Color.White.copy(alpha = 0.55f),
+                        modifier = Modifier.size(12.dp),
                     )
                     Text(
                         text = preview.summary,
-                        color = Color.White.copy(alpha = 0.65f),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Normal,
+                        color = Color.White.copy(alpha = 0.60f),
+                        fontSize = 12.5.sp,
+                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -4222,8 +4240,8 @@ private fun NotificationPreviewContent(
             } else {
                 Text(
                     text = preview.summary,
-                    color = Color.White,
-                    fontSize = 12.sp,
+                    color = Color.White.copy(alpha = 0.95f),
+                    fontSize = 12.5.sp,
                     fontWeight = FontWeight.Normal,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -4231,59 +4249,61 @@ private fun NotificationPreviewContent(
             }
         }
 
-        // Right primary action chip
+        // Action button (icon-only)
         preview.primaryAction?.let { action ->
             val labelLower = action.label.lowercase()
-            val isApprove = labelLower.contains("approve") || labelLower.contains("accept")
-            val isReject = labelLower.contains("reject") || labelLower.contains("deny") || labelLower.contains("decline")
-            val isReply = labelLower.contains("reply")
-            val isMarkRead = labelLower.contains("read") || labelLower.contains("done")
+            val isApprove = labelLower.contains("approve") || labelLower.contains("accept") ||
+                labelLower.contains("yes") || labelLower.contains("allow") || labelLower.contains("confirm")
+            val isReject = labelLower.contains("reject") || labelLower.contains("deny") ||
+                labelLower.contains("decline") || labelLower.contains("no") || labelLower.contains("dismiss")
+            val isReply = labelLower.contains("reply") || labelLower.contains("send") || labelLower.contains("chat")
+            val isMarkRead = labelLower.contains("read") || labelLower.contains("done") || labelLower.contains("mark")
+            val isArchive = labelLower.contains("archive") || labelLower.contains("delete") || labelLower.contains("trash")
+            val isCopy = labelLower.contains("copy") || labelLower.contains("code")
+            val isCall = labelLower.contains("call") || labelLower.contains("dial")
 
-            val chipIcon = when {
+            val buttonIcon = when {
                 isApprove -> Icons.Rounded.Check
                 isReject -> Icons.Rounded.Close
                 isReply -> Icons.AutoMirrored.Rounded.Send
-                isMarkRead -> Icons.Rounded.Check
-                else -> null
+                isMarkRead -> Icons.Rounded.DoneAll
+                isArchive -> Icons.Rounded.Archive
+                isCopy -> Icons.Rounded.ContentCopy
+                isCall -> Icons.Rounded.Call
+                else -> Icons.AutoMirrored.Rounded.ArrowForward
             }
 
-            val chipContainer = when {
-                isApprove -> MaterialTheme.colorScheme.primary
+            val buttonContainer = when {
+                isApprove -> MaterialTheme.colorScheme.primaryContainer
                 isReject -> MaterialTheme.colorScheme.errorContainer
+                isReply -> MaterialTheme.colorScheme.primaryContainer
                 else -> MaterialTheme.colorScheme.secondaryContainer
             }
-            val chipContent = when {
-                isApprove -> MaterialTheme.colorScheme.onPrimary
+            val buttonContent = when {
+                isApprove -> MaterialTheme.colorScheme.onPrimaryContainer
                 isReject -> MaterialTheme.colorScheme.onErrorContainer
+                isReply -> MaterialTheme.colorScheme.onPrimaryContainer
                 else -> MaterialTheme.colorScheme.onSecondaryContainer
             }
 
             Surface(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(14.dp))
+                    .size(34.dp)
+                    .clip(CircleShape)
                     .clickable { onAction(action) },
-                color = chipContainer,
-                shape = RoundedCornerShape(14.dp),
+                color = buttonContainer,
+                shape = CircleShape,
+                shadowElevation = 2.dp,
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.fillMaxSize(),
                 ) {
-                    if (chipIcon != null) {
-                        Icon(
-                            imageVector = chipIcon,
-                            contentDescription = null,
-                            tint = chipContent,
-                            modifier = Modifier.size(13.dp),
-                        )
-                    }
-                    Text(
-                        text = action.label,
-                        color = chipContent,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
+                    Icon(
+                        imageVector = buttonIcon,
+                        contentDescription = action.label,
+                        tint = buttonContent,
+                        modifier = Modifier.size(17.dp),
                     )
                 }
             }

@@ -27,13 +27,18 @@ object NotificationSummarizer {
     ): SummaryResult {
         val notification = sbn.notification
         val extras = notification?.extras
+        val rawTitle = extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim()
+        val rawText = (extras?.getCharSequence(Notification.EXTRA_BIG_TEXT)
+            ?: extras?.getCharSequence(Notification.EXTRA_TEXT))?.toString()?.trim()
+        val subText = extras?.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()?.trim()
+        val convTitle = extras?.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)?.toString()?.trim()
         return summarize(
             packageName = sbn.packageName,
             appName = appName,
-            rawTitle = extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim(),
-            rawText = extras?.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.trim(),
-            subText = extras?.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()?.trim(),
-            convTitle = extras?.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)?.toString()?.trim(),
+            rawTitle = rawTitle,
+            rawText = rawText,
+            subText = subText,
+            convTitle = convTitle,
             isContentAllowed = isContentAllowed,
             category = notification?.category,
             isSensitive = NotificationPrivacyGate.isSensitive(sbn),
@@ -65,16 +70,65 @@ object NotificationSummarizer {
             )
         }
 
-        val smartTitle = when {
-            isTwoFactor(pkg) -> parseTwoFactor(pkg, displayApp, rawTitle, rawText)
-            isReddit(pkg) -> parseReddit(rawTitle, rawText, subText)
-            isEmail(pkg, category) -> parseEmail(displayApp, rawTitle, subText)
-            isMessaging(pkg, category, isSensitive) -> parseMessaging(displayApp, rawTitle, subText, convTitle)
-            else -> parseGeneral(displayApp, rawTitle)
+        val contextTag: String
+        val smartTitle: String
+
+        when {
+            isTwoFactor(pkg) -> {
+                contextTag = displayApp
+                smartTitle = parseTwoFactor(pkg, displayApp, rawTitle, rawText)
+            }
+
+            isReddit(pkg) -> {
+                contextTag = extractSubreddit(rawTitle, rawText, subText) ?: displayApp
+                smartTitle = parseReddit(rawTitle, rawText, subText)
+            }
+
+            isEmail(pkg, category) -> {
+                val inboxOrSender = when {
+                    !subText.isNullOrBlank() && (subText.contains("inbox", ignoreCase = true) || rawTitle.isNullOrBlank()) -> subText
+                    !rawTitle.isNullOrBlank() -> rawTitle
+                    else -> null
+                }
+                contextTag = if (inboxOrSender != null) "$displayApp • $inboxOrSender" else displayApp
+                smartTitle = if (!rawText.isNullOrBlank()) {
+                    LocalAiSummarizer.summarize(rawTitle, rawText, displayApp)
+                } else {
+                    parseEmail(displayApp, rawTitle, subText)
+                }
+            }
+
+            isMessaging(pkg, category, isSensitive) -> {
+                val sender = rawTitle?.takeIf { it.isNotBlank() }
+                val channel = subText?.takeIf { it.isNotBlank() }
+                val group = convTitle?.takeIf { it.isNotBlank() }
+                val senderOrGroup = when {
+                    group != null && sender != null && !group.equals(sender, ignoreCase = true) -> "$sender in $group"
+                    channel != null && sender != null -> "$sender in $channel"
+                    group != null -> group
+                    sender != null -> sender
+                    else -> null
+                }
+                contextTag = if (senderOrGroup != null) "$displayApp • $senderOrGroup" else displayApp
+                smartTitle = if (!rawText.isNullOrBlank()) {
+                    LocalAiSummarizer.summarize(rawTitle, rawText, displayApp)
+                } else {
+                    parseMessaging(displayApp, rawTitle, subText, convTitle)
+                }
+            }
+
+            else -> {
+                contextTag = displayApp
+                smartTitle = if (!rawText.isNullOrBlank()) {
+                    LocalAiSummarizer.summarize(rawTitle, rawText, displayApp)
+                } else {
+                    parseGeneral(displayApp, rawTitle)
+                }
+            }
         }
 
         return SummaryResult(
-            contextTag = displayApp,
+            contextTag = contextTag,
             summary = smartTitle,
             isContentMasked = false,
         )
@@ -209,4 +263,3 @@ object NotificationSummarizer {
     /** Regex capturing standard subreddit format (e.g. r/androiddev). */
     private val SubredditPattern = Regex("""r/[A-Za-z0-9_]+""")
 }
-

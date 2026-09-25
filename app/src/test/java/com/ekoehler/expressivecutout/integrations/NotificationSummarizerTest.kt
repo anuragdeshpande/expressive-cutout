@@ -100,7 +100,8 @@ class NotificationSummarizerTest {
             convTitle = null,
             isContentAllowed = true,
         )
-        assertEquals("New email from Work Inbox", resultWithInbox.summary)
+        assertEquals("Here are the project milestones for Q3", resultWithInbox.summary)
+        assertEquals("Gmail • Work Inbox", resultWithInbox.contextTag)
 
         val resultWithSender = NotificationSummarizer.summarize(
             packageName = "com.google.android.gm",
@@ -111,7 +112,8 @@ class NotificationSummarizerTest {
             convTitle = null,
             isContentAllowed = true,
         )
-        assertEquals("New email from Alice Vance", resultWithSender.summary)
+        assertEquals("Meeting notes attached", resultWithSender.summary)
+        assertEquals("Gmail • Alice Vance", resultWithSender.contextTag)
     }
 
     @Test
@@ -126,7 +128,8 @@ class NotificationSummarizerTest {
             isContentAllowed = true,
             isSensitive = true,
         )
-        assertEquals("New message from Alex Vance", resultDirect.summary)
+        assertEquals("Review the PR before deployment", resultDirect.summary)
+        assertEquals("Slack • Alex Vance", resultDirect.contextTag)
 
         val resultChannel = NotificationSummarizer.summarize(
             packageName = "com.slack",
@@ -138,7 +141,8 @@ class NotificationSummarizerTest {
             isContentAllowed = true,
             isSensitive = true,
         )
-        assertEquals("New message from Alex Vance in #general", resultChannel.summary)
+        assertEquals("Deployment ready in staging", resultChannel.summary)
+        assertEquals("Slack • Alex Vance in #general", resultChannel.contextTag)
     }
 
     @Test
@@ -152,7 +156,7 @@ class NotificationSummarizerTest {
             convTitle = null,
             isContentAllowed = true,
         )
-        assertEquals("Driver arriving now", resultWithTitle.summary)
+        assertEquals("Toyota Camry • ABC 123", resultWithTitle.summary)
 
         val resultWithoutTitle = NotificationSummarizer.summarize(
             packageName = "com.example.app",
@@ -163,6 +167,6 @@ class NotificationSummarizerTest {
             convTitle = null,
             isContentAllowed = true,
         )
-        assertEquals("Notification from Example", resultWithoutTitle.summary)
+        assertEquals("Some background event", resultWithoutTitle.summary)
     }
 }
