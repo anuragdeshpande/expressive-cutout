@@ -739,6 +739,67 @@ fun NotificationPreviewScreen(
             }
         }
 
+        // Global Default Notification Mode Card
+        item(key = "default_mode") {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = stringResource(R.string.notif_preview_default_mode),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            text = stringResource(R.string.notif_preview_default_mode_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+
+                    val modeOptions = listOf(
+                        stringResource(R.string.notif_preview_mode_normal_short),
+                        stringResource(R.string.notif_preview_mode_preview_short),
+                        stringResource(R.string.notif_preview_mode_expand_short),
+                    )
+                    val selectedIndex = when (settings.defaultMode) {
+                        NotificationMode.NORMAL -> 0
+                        NotificationMode.PREVIEW -> 1
+                        NotificationMode.AUTO_EXPAND -> 2
+                    }
+
+                    ExpressiveSegmentedRow(
+                        options = modeOptions,
+                        selectedIndex = selectedIndex,
+                        onSelect = { idx ->
+                            val selectedMode = when (idx) {
+                                0 -> NotificationMode.NORMAL
+                                1 -> NotificationMode.PREVIEW
+                                else -> NotificationMode.AUTO_EXPAND
+                            }
+                            viewModel.setDefaultNotificationMode(selectedMode)
+                        },
+                    )
+
+                    Text(
+                        text = when (settings.defaultMode) {
+                            NotificationMode.NORMAL -> stringResource(R.string.notif_preview_mode_normal_desc)
+                            NotificationMode.PREVIEW -> stringResource(R.string.notif_preview_mode_preview_desc)
+                            NotificationMode.AUTO_EXPAND -> stringResource(R.string.notif_preview_mode_expand_desc)
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
         // App Rules Section Header & Segmented Tabs
         item(key = "apps_header") {
             Column(

@@ -192,12 +192,28 @@ class NotificationPreviewPreferences(private val context: Context) : JsonSeriali
         val enabled = prefs[KEY_ENABLED] ?: true
         val allowSensitive = prefs[KEY_ALLOW_SENSITIVE_GLOBALLY] ?: false
         val autoUnfurl = prefs[KEY_AUTO_UNFURL_2FA] ?: true
-        val defaultMode = runCatching { NotificationMode.valueOf(prefs[KEY_DEFAULT_MODE] ?: "") }.getOrDefault(NotificationMode.NORMAL)
+        val isMigrated = prefs[KEY_MIGRATED_DEFAULT_MODE] ?: false
+        val defaultMode = if (!isMigrated) {
+            NotificationMode.NORMAL
+        } else {
+            runCatching { NotificationMode.valueOf(prefs[KEY_DEFAULT_MODE] ?: "") }.getOrDefault(NotificationMode.NORMAL)
+        }
         val summaryEngine = runCatching { SummaryEngineType.valueOf(prefs[KEY_SUMMARY_ENGINE] ?: "") }.getOrDefault(SummaryEngineType.ON_DEVICE_AI)
         val cloudApiKey = prefs[KEY_CLOUD_API_KEY]
         val disabledPackages = prefs[KEY_DISABLED_CONTENT_PACKAGES].orEmpty()
         val appRulesJson = prefs[KEY_APP_RULES_JSON]
-        val appRules = parseAppRules(appRulesJson)
+        val rawAppRules = parseAppRules(appRulesJson)
+        val appRules = if (!isMigrated) {
+            rawAppRules.mapValues { (_, rule) ->
+                if (rule.mode == NotificationMode.PREVIEW && rule.subFilters.isEmpty()) {
+                    rule.copy(mode = NotificationMode.NORMAL)
+                } else {
+                    rule
+                }
+            }
+        } else {
+            rawAppRules
+        }
         val maxStackSize = prefs[KEY_MAX_STACK_SIZE] ?: NotificationPreviewSettings.DEFAULT_MAX_STACK_SIZE
 
         NotificationPreviewSettings(
@@ -229,6 +245,29 @@ class NotificationPreviewPreferences(private val context: Context) : JsonSeriali
     /** Sets the default notification display mode. */
     suspend fun setDefaultMode(mode: NotificationMode) = context.notificationPreviewDataStore.edit {
         it[KEY_DEFAULT_MODE] = mode.name
+        it[KEY_MIGRATED_DEFAULT_MODE] = true
+    }
+
+    /** Migrates legacy preferences so that default notification mode defaults to [NotificationMode.NORMAL]. */
+    suspend fun migrateDefaultsIfNeeded() = context.notificationPreviewDataStore.edit { prefs ->
+        if (prefs[KEY_MIGRATED_DEFAULT_MODE] != true) {
+            prefs[KEY_DEFAULT_MODE] = NotificationMode.NORMAL.name
+            val appRulesJson = prefs[KEY_APP_RULES_JSON]
+            if (!appRulesJson.isNullOrBlank()) {
+                val currentRules = parseAppRules(appRulesJson).toMutableMap()
+                var changed = false
+                currentRules.forEach { (pkg, rule) ->
+                    if (rule.mode == NotificationMode.PREVIEW && rule.subFilters.isEmpty()) {
+                        currentRules[pkg] = rule.copy(mode = NotificationMode.NORMAL)
+                        changed = true
+                    }
+                }
+                if (changed) {
+                    prefs[KEY_APP_RULES_JSON] = serializeAppRules(currentRules)
+                }
+            }
+            prefs[KEY_MIGRATED_DEFAULT_MODE] = true
+        }
     }
 
     /** Sets the maximum number of concurrent stacked notification preview cards. */
@@ -310,6 +349,7 @@ class NotificationPreviewPreferences(private val context: Context) : JsonSeriali
         private val KEY_ALLOW_SENSITIVE_GLOBALLY = booleanPreferencesKey("allow_sensitive_globally")
         private val KEY_AUTO_UNFURL_2FA = booleanPreferencesKey("auto_unfurl_2fa")
         private val KEY_DEFAULT_MODE = stringPreferencesKey("default_mode")
+        private val KEY_MIGRATED_DEFAULT_MODE = booleanPreferencesKey("migrated_default_mode_v2")
         private val KEY_MAX_STACK_SIZE = intPreferencesKey("max_stack_size")
         private val KEY_SUMMARY_ENGINE = stringPreferencesKey("summary_engine")
         private val KEY_CLOUD_API_KEY = stringPreferencesKey("cloud_api_key")

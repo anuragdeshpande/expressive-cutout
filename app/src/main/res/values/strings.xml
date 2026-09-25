@@ -692,6 +692,9 @@
     <string name="notif_preview_master_title">Enable notification previews</string>
     <string name="notif_preview_master_desc">Shows a compact 2-row preview with a context tag, summary, and primary action</string>
     <string name="notif_preview_default_mode">Default notification mode</string>
+    <string name="notif_preview_default_mode_desc">Default presentation when apps post notifications</string>
+    <string name="notif_preview_app_mode_title">Notification display mode</string>
+    <string name="notif_preview_app_mode_desc">Display presentation when this app posts a notification</string>
     <string name="notif_preview_mode_normal">Normal (Icon only)</string>
     <string name="notif_preview_mode_preview">Preview state</string>
     <string name="notif_preview_mode_expand">Auto-expand</string>

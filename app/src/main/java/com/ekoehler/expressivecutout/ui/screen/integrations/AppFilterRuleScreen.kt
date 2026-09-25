@@ -91,7 +91,7 @@ fun AppFilterRuleScreen(
     val settings by viewModel.notificationPreviewSettings.collectAsStateWithLifecycle()
     val detectedAppsAndActions by viewModel.detectedAppsAndActions.collectAsStateWithLifecycle()
     val detectedActions = detectedAppsAndActions[packageName].orEmpty()
-    val appRule = settings.appRules[packageName] ?: AppFilterRule(packageName = packageName)
+    val appRule = settings.appRules[packageName] ?: AppFilterRule(packageName = packageName, mode = settings.defaultMode)
     val isContentAllowed = packageName !in settings.disabledContentPackages &&
         (settings.allowSensitiveContentGlobally || !isSensitivePackage(packageName))
 
@@ -273,12 +273,12 @@ fun AppFilterRuleScreen(
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
-                            text = stringResource(R.string.notif_preview_default_mode),
+                            text = stringResource(R.string.notif_preview_app_mode_title),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                         )
                         Text(
-                            text = "Default presentation when this app posts a notification",
+                            text = stringResource(R.string.notif_preview_app_mode_desc),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

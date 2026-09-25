@@ -104,6 +104,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             initialValue = com.ekoehler.expressivecutout.data.NotificationPreviewSettings(),
         )
 
+    init {
+        viewModelScope.launch {
+            notificationPreviewPreferences.migrateDefaultsIfNeeded()
+        }
+    }
+
     val customIcons: StateFlow<Map<SystemEventType, IconSource>> =
         preferences.customIcons.stateIn(
             scope = viewModelScope,
