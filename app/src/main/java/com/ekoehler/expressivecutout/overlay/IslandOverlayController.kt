@@ -1894,10 +1894,7 @@ class IslandOverlayController(private val context: Context) {
             event?.preview != null -> {
                 val preview = event.preview
                 val appLabel = event.appName ?: preview.contextTag ?: "Notification"
-                val compactTime = NotificationHeaderResolver.formatCompactRelativeTime(
-                    event.postTimeMs ?: System.currentTimeMillis()
-                )
-                val header = "$appLabel • $compactTime"
+                val header = appLabel
                 val widthPct = previewCutoutWidthPercent(
                     appName = appLabel,
                     headerText = header,
@@ -1984,8 +1981,8 @@ class IslandOverlayController(private val context: Context) {
             isTwoRowCall() -> callIncomingExtraDp()
             !expanded && event?.preview != null -> {
                 when {
-                    previewStack.value.size > 2 -> 14
-                    previewStack.value.size > 1 -> 8
+                    previewStack.value.size > 2 -> 18
+                    previewStack.value.size > 1 -> 10
                     else -> 0
                 }
             }
@@ -3031,7 +3028,7 @@ class IslandOverlayController(private val context: Context) {
         const val TOUCH_MARGIN_DP = 12
 
         /** Extra height allocated for stacked notification preview peek cards below the active card. */
-        const val PREVIEW_STACK_HEIGHT_BONUS_DP = 16
+        const val PREVIEW_STACK_HEIGHT_BONUS_DP = 20
 
 
         /**

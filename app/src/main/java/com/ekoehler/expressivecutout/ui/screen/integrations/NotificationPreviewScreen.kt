@@ -169,7 +169,7 @@ private fun scenarioToSignal(context: Context, scenario: PreviewScenario, allowS
             intent = dummyIntent,
         )
     )
-    val contextTag = if (scenario == PreviewScenario.Chat) "${scenario.appName} • Alex Vance" else scenario.appName
+    val contextTag = scenario.appName
     return CutoutSignal.Notification(
         packageName = scenario.packageName,
         title = scenario.smartTitle,
@@ -389,10 +389,10 @@ fun NotificationPreviewScreen(
 
                             // Tucking card at the back of the deck
                             if (simulatedStack.size > 1 && fProgress > 0f) {
-                                val tuckY = if (simulatedStack.size > 2) lerpDp(14.dp, 10.dp, fProgress) else lerpDp(8.dp, 5.dp, fProgress)
-                                val tuckWidth = if (simulatedStack.size > 2) (0.85f + 0.05f * fProgress) else (0.90f + 0.05f * fProgress)
-                                val tuckColor = if (simulatedStack.size > 2) Color(0xFF08090C) else Color(0xFF0A0B0E)
-                                val tuckBorder = if (simulatedStack.size > 2) Color(0xFF1C1E23) else Color(0xFF24262C)
+                                val tuckY = if (simulatedStack.size > 2) lerpDp(22.dp, 16.dp, fProgress) else lerpDp(14.dp, 8.dp, fProgress)
+                                val tuckWidth = if (simulatedStack.size > 2) (0.76f + 0.08f * fProgress) else (0.84f + 0.08f * fProgress)
+                                val tuckColor = if (simulatedStack.size > 2) Color(0xFF060709) else Color(0xFF08090C)
+                                val tuckBorder = if (simulatedStack.size > 2) Color(0xFF181A20) else Color(0xFF22252C)
                                 Surface(
                                     modifier = Modifier
                                         .fillMaxWidth(baseFraction * tuckWidth)
@@ -407,10 +407,10 @@ fun NotificationPreviewScreen(
 
                             // Peek 3 card
                             if (simulatedStack.size > 2) {
-                                val peek3Y = lerpDp(10.dp, 5.dp, fProgress)
-                                val peek3Width = 0.90f + 0.05f * fProgress
-                                val peek3Color = lerp(Color(0xFF08090C), Color(0xFF0A0B0E), fProgress)
-                                val peek3Border = lerp(Color(0xFF1C1E23), Color(0xFF24262C), fProgress)
+                                val peek3Y = lerpDp(16.dp, 8.dp, fProgress)
+                                val peek3Width = 0.84f + 0.08f * fProgress
+                                val peek3Color = lerp(Color(0xFF08090C), Color(0xFF0D0E12), fProgress)
+                                val peek3Border = lerp(Color(0xFF22252C), Color(0xFF323640), fProgress)
                                 Surface(
                                     modifier = Modifier
                                         .fillMaxWidth(baseFraction * peek3Width)
@@ -424,10 +424,10 @@ fun NotificationPreviewScreen(
 
                             // Peek 2 card
                             if (simulatedStack.size > 1) {
-                                val peek2Y = lerpDp(5.dp, 0.dp, fProgress)
-                                val peek2Width = 0.95f + 0.05f * fProgress
-                                val peek2Color = lerp(Color(0xFF0A0B0E), Color(0xFF0C0D10), fProgress)
-                                val peek2Border = lerp(Color(0xFF24262C), Color(0xFF2E3138), fProgress)
+                                val peek2Y = lerpDp(8.dp, 0.dp, fProgress)
+                                val peek2Width = 0.92f + 0.08f * fProgress
+                                val peek2Color = lerp(Color(0xFF0D0E12), Color(0xFF0C0D10), fProgress)
+                                val peek2Border = lerp(Color(0xFF323640), Color(0xFF3E4350), fProgress)
                                 val secondScenario = simulatedStack.getOrNull(1)
                                 Surface(
                                     modifier = Modifier
@@ -836,9 +836,11 @@ fun NotificationPreviewScreen(
                 items(filtered, key = { it.packageName }) { app ->
                     val isBlocked = app.packageName in settings.disabledContentPackages ||
                         (!settings.allowSensitiveContentGlobally && isLikelyMessagingApp(app.packageName))
+                    val appMode = settings.appRules[app.packageName]?.mode ?: settings.defaultMode
                     AppRow(
                         app = app,
                         isContentAllowed = !isBlocked,
+                        mode = appMode,
                         onClick = { onNavigateToAppRule(app.packageName) },
                     )
                 }
@@ -851,6 +853,7 @@ fun NotificationPreviewScreen(
 private fun AppRow(
     app: InstalledAppInfo,
     isContentAllowed: Boolean,
+    mode: NotificationMode,
     onClick: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -902,31 +905,64 @@ private fun AppRow(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.height(3.dp))
-                // Clean M3 Status Badge
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = if (isContentAllowed) {
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
-                    } else {
-                        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f)
-                    },
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    // Clean M3 Status Badge
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isContentAllowed) {
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                        } else {
+                            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f)
+                        },
                     ) {
-                        Icon(
-                            imageVector = if (isContentAllowed) Icons.Rounded.Security else Icons.Rounded.Lock,
-                            contentDescription = null,
-                            tint = if (isContentAllowed) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer,
-                            modifier = Modifier.size(11.dp),
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Icon(
+                                imageVector = if (isContentAllowed) Icons.Rounded.Security else Icons.Rounded.Lock,
+                                contentDescription = null,
+                                tint = if (isContentAllowed) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.size(11.dp),
+                            )
+                            Text(
+                                text = if (isContentAllowed) stringResource(R.string.notif_preview_app_status_allowed) else stringResource(R.string.notif_preview_app_status_protected),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isContentAllowed) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
+                    }
+
+                    // Mode Badge
+                    val modeLabel = when (mode) {
+                        NotificationMode.PREVIEW -> stringResource(R.string.notif_preview_mode_preview_short)
+                        NotificationMode.AUTO_EXPAND -> stringResource(R.string.notif_preview_mode_expand_short)
+                        NotificationMode.NORMAL -> stringResource(R.string.notif_preview_mode_normal_short)
+                    }
+                    val isPreview = mode == NotificationMode.PREVIEW || mode == NotificationMode.AUTO_EXPAND
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isPreview) {
+                            MaterialTheme.colorScheme.secondaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        },
+                    ) {
                         Text(
-                            text = if (isContentAllowed) stringResource(R.string.notif_preview_app_status_allowed) else stringResource(R.string.notif_preview_app_status_protected),
+                            text = modeLabel,
                             style = MaterialTheme.typography.labelSmall,
-                            color = if (isContentAllowed) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer,
+                            color = if (isPreview) {
+                                MaterialTheme.colorScheme.onSecondaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
                             fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                         )
                     }
                 }
@@ -985,51 +1021,16 @@ private fun SimulatorCardContent(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.Center,
         ) {
-            val contextTag = if (scenario == PreviewScenario.Chat) "${scenario.appName} • Alex Vance" else scenario.appName
-
             // Header line
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
-            ) {
-                Text(
-                    text = contextTag,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontSize = 11.5.sp,
-                    lineHeight = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-                Text(
-                    text = "•",
-                    color = Color.White.copy(alpha = 0.35f),
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    text = "Now",
-                    color = Color.White.copy(alpha = 0.55f),
-                    fontSize = 11.sp,
-                    lineHeight = 14.sp,
-                    fontWeight = FontWeight.Normal,
-                )
-                if (stackCount > 1) {
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
-                    ) {
-                        Text(
-                            text = "$stackIndex/$stackCount",
-                            color = MaterialTheme.colorScheme.primary,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.5.dp),
-                        )
-                    }
-                }
-            }
+            Text(
+                text = scenario.appName,
+                color = MaterialTheme.colorScheme.primary,
+                fontSize = 11.5.sp,
+                lineHeight = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
 
             Spacer(modifier = Modifier.height(1.5.dp))
 

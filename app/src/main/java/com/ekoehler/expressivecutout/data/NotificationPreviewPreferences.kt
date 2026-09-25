@@ -72,7 +72,7 @@ data class SubFilterRule(
     val id: String,
     val name: String,
     val pattern: String,
-    val mode: NotificationMode = NotificationMode.PREVIEW,
+    val mode: NotificationMode = NotificationMode.NORMAL,
     val preferredAction: PreferredActionType = PreferredActionType.AUTO,
 ) {
     /** Serializes this sub-filter rule to a JSON object. */
@@ -96,7 +96,7 @@ data class SubFilterRule(
             val id = json.optString(KEY_ID).takeIf { it.isNotBlank() } ?: return null
             val name = json.optString(KEY_NAME, id)
             val pattern = json.optString(KEY_PATTERN, "")
-            val mode = runCatching { NotificationMode.valueOf(json.optString(KEY_MODE)) }.getOrDefault(NotificationMode.PREVIEW)
+            val mode = runCatching { NotificationMode.valueOf(json.optString(KEY_MODE)) }.getOrDefault(NotificationMode.NORMAL)
             val action = runCatching { PreferredActionType.valueOf(json.optString(KEY_ACTION)) }.getOrDefault(PreferredActionType.AUTO)
             return SubFilterRule(id = id, name = name, pattern = pattern, mode = mode, preferredAction = action)
         }
@@ -108,7 +108,7 @@ data class SubFilterRule(
  */
 data class AppFilterRule(
     val packageName: String,
-    val mode: NotificationMode = NotificationMode.PREVIEW,
+    val mode: NotificationMode = NotificationMode.NORMAL,
     val preferredAction: PreferredActionType = PreferredActionType.AUTO,
     val preferredActionLabel: String? = null,
     val subFilters: List<SubFilterRule> = emptyList(),
@@ -134,7 +134,7 @@ data class AppFilterRule(
         /** Deserializes an [AppFilterRule] from JSON. */
         fun fromJson(json: JSONObject): AppFilterRule? {
             val pkg = json.optString(KEY_PACKAGE).takeIf { it.isNotBlank() } ?: return null
-            val mode = runCatching { NotificationMode.valueOf(json.optString(KEY_MODE)) }.getOrDefault(NotificationMode.PREVIEW)
+            val mode = runCatching { NotificationMode.valueOf(json.optString(KEY_MODE)) }.getOrDefault(NotificationMode.NORMAL)
             val action = runCatching { PreferredActionType.valueOf(json.optString(KEY_ACTION)) }.getOrDefault(PreferredActionType.AUTO)
             val actionLabel = json.optString(KEY_ACTION_LABEL).takeIf { it.isNotBlank() }
             val subArray = json.optJSONArray(KEY_SUBFILTERS)
@@ -169,7 +169,7 @@ data class NotificationPreviewSettings(
     val enabled: Boolean = true,
     val allowSensitiveContentGlobally: Boolean = false,
     val autoUnfurlDynamicActions: Boolean = true,
-    val defaultMode: NotificationMode = NotificationMode.PREVIEW,
+    val defaultMode: NotificationMode = NotificationMode.NORMAL,
     val summaryEngine: SummaryEngineType = SummaryEngineType.ON_DEVICE_AI,
     val cloudApiKey: String? = null,
     val disabledContentPackages: Set<String> = emptySet(),
@@ -192,7 +192,7 @@ class NotificationPreviewPreferences(private val context: Context) : JsonSeriali
         val enabled = prefs[KEY_ENABLED] ?: true
         val allowSensitive = prefs[KEY_ALLOW_SENSITIVE_GLOBALLY] ?: false
         val autoUnfurl = prefs[KEY_AUTO_UNFURL_2FA] ?: true
-        val defaultMode = runCatching { NotificationMode.valueOf(prefs[KEY_DEFAULT_MODE] ?: "") }.getOrDefault(NotificationMode.PREVIEW)
+        val defaultMode = runCatching { NotificationMode.valueOf(prefs[KEY_DEFAULT_MODE] ?: "") }.getOrDefault(NotificationMode.NORMAL)
         val summaryEngine = runCatching { SummaryEngineType.valueOf(prefs[KEY_SUMMARY_ENGINE] ?: "") }.getOrDefault(SummaryEngineType.ON_DEVICE_AI)
         val cloudApiKey = prefs[KEY_CLOUD_API_KEY]
         val disabledPackages = prefs[KEY_DISABLED_CONTENT_PACKAGES].orEmpty()
@@ -287,7 +287,7 @@ class NotificationPreviewPreferences(private val context: Context) : JsonSeriali
             if (root.has("enabled")) prefs[KEY_ENABLED] = root.optBoolean("enabled", true)
             if (root.has("allowSensitiveContentGlobally")) prefs[KEY_ALLOW_SENSITIVE_GLOBALLY] = root.optBoolean("allowSensitiveContentGlobally", false)
             if (root.has("autoUnfurlDynamicActions")) prefs[KEY_AUTO_UNFURL_2FA] = root.optBoolean("autoUnfurlDynamicActions", true)
-            if (root.has("defaultMode")) prefs[KEY_DEFAULT_MODE] = root.optString("defaultMode", NotificationMode.PREVIEW.name)
+            if (root.has("defaultMode")) prefs[KEY_DEFAULT_MODE] = root.optString("defaultMode", NotificationMode.NORMAL.name)
             if (root.has("summaryEngine")) prefs[KEY_SUMMARY_ENGINE] = root.optString("summaryEngine", SummaryEngineType.ON_DEVICE_AI.name)
             if (root.has("maxStackSize")) prefs[KEY_MAX_STACK_SIZE] = root.optInt("maxStackSize", NotificationPreviewSettings.DEFAULT_MAX_STACK_SIZE)
             if (root.has("disabledContentPackages")) {

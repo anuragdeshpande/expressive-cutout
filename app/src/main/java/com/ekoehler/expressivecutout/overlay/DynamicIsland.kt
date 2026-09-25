@@ -1030,10 +1030,10 @@ fun DynamicIsland(
 
                 // Tucking card at the back of the deck
                 if (fProgress > 0f) {
-                    val tuckY = if (previewStack.size > 2) lerpDp(14.dp, 10.dp, fProgress) else lerpDp(8.dp, 5.dp, fProgress)
-                    val tuckWidthFactor = if (previewStack.size > 2) (0.85f + 0.05f * fProgress) else (0.90f + 0.05f * fProgress)
-                    val tuckColor = if (previewStack.size > 2) Color(0xFF08090C) else Color(0xFF0A0B0E)
-                    val tuckBorder = if (previewStack.size > 2) Color(0xFF1C1E23) else Color(0xFF24262C)
+                    val tuckY = if (previewStack.size > 2) lerpDp(22.dp, 16.dp, fProgress) else lerpDp(14.dp, 8.dp, fProgress)
+                    val tuckWidthFactor = if (previewStack.size > 2) (0.76f + 0.08f * fProgress) else (0.84f + 0.08f * fProgress)
+                    val tuckColor = if (previewStack.size > 2) Color(0xFF060709) else Color(0xFF08090C)
+                    val tuckBorder = if (previewStack.size > 2) Color(0xFF181A20) else Color(0xFF22252C)
                     Surface(
                         modifier = Modifier
                             .align(Alignment.TopCenter)
@@ -1049,10 +1049,10 @@ fun DynamicIsland(
 
                 // Peek 3 card
                 if (previewStack.size > 2) {
-                    val peek3Y = lerpDp(10.dp, 5.dp, fProgress)
-                    val peek3WidthFactor = 0.90f + 0.05f * fProgress
-                    val peek3Color = lerp(Color(0xFF08090C), Color(0xFF0A0B0E), fProgress)
-                    val peek3Border = lerp(Color(0xFF1C1E23), Color(0xFF24262C), fProgress)
+                    val peek3Y = lerpDp(16.dp, 8.dp, fProgress)
+                    val peek3WidthFactor = 0.84f + 0.08f * fProgress
+                    val peek3Color = lerp(Color(0xFF08090C), Color(0xFF0D0E12), fProgress)
+                    val peek3Border = lerp(Color(0xFF22252C), Color(0xFF323640), fProgress)
                     Surface(
                         modifier = Modifier
                             .align(Alignment.TopCenter)
@@ -1066,10 +1066,10 @@ fun DynamicIsland(
                 }
 
                 // Peek 2 card
-                val peek2Y = lerpDp(5.dp, 0.dp, fProgress)
-                val peek2WidthFactor = 0.95f + 0.05f * fProgress
-                val peek2Color = lerp(Color(0xFF0A0B0E), Color(0xFF0C0D10), fProgress)
-                val peek2Border = lerp(Color(0xFF24262C), Color(0xFF2E3138), fProgress)
+                val peek2Y = lerpDp(8.dp, 0.dp, fProgress)
+                val peek2WidthFactor = 0.92f + 0.08f * fProgress
+                val peek2Color = lerp(Color(0xFF0D0E12), Color(0xFF0C0D10), fProgress)
+                val peek2Border = lerp(Color(0xFF323640), Color(0xFF3E4350), fProgress)
                 val nextEvent = previewStack.getOrNull(1)
                 Surface(
                     modifier = Modifier
@@ -4108,10 +4108,9 @@ internal fun previewCutoutWidthPercent(
         return text.length * (sizeSp * 0.62f)
     }
 
-    val hText = headerText ?: appName ?: "Notification"
-    val headerTextDp = measureTextWidthDp(hText, 11f, true)
-    val stackBadgeDp = if (stackCount > 1) 32 else 0
-    val row1Dp = headerTextDp + stackBadgeDp
+    val hText = appName ?: headerText ?: "Notification"
+    val headerTextDp = measureTextWidthDp(hText, 11.5f, true)
+    val row1Dp = headerTextDp
 
     val sText = summaryText ?: "Notification"
     val summaryTextDp = measureTextWidthDp(sText, 12f, false)
@@ -4167,53 +4166,17 @@ private fun NotificationPreviewContent(
             val appLabel = event.appName?.takeIf { it.isNotBlank() }
                 ?: preview.contextTag?.takeIf { it.isNotBlank() }
                 ?: "Notification"
-            val compactTime = rememberCompactRelativeTime(event.postTimeMs)
 
             // Header line
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
-            ) {
-                Text(
-                    text = appLabel,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontSize = 11.5.sp,
-                    lineHeight = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-                if (!compactTime.isNullOrBlank()) {
-                    Text(
-                        text = "•",
-                        color = Color.White.copy(alpha = 0.35f),
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        text = compactTime,
-                        color = Color.White.copy(alpha = 0.55f),
-                        fontSize = 11.sp,
-                        lineHeight = 14.sp,
-                        fontWeight = FontWeight.Normal,
-                    )
-                }
-                if (stackCount > 1) {
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
-                    ) {
-                        Text(
-                            text = "$stackIndex/$stackCount",
-                            color = MaterialTheme.colorScheme.primary,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.5.dp),
-                        )
-                    }
-                }
-            }
+            Text(
+                text = appLabel,
+                color = MaterialTheme.colorScheme.primary,
+                fontSize = 11.5.sp,
+                lineHeight = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
 
             Spacer(modifier = Modifier.height(1.5.dp))
 
